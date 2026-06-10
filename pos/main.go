@@ -48,19 +48,19 @@ func main() {
 	}
 
 	sub, _ := fs.Sub(templateFS, "templates")
-	var templateNames []string
-	fs.WalkDir(sub, ".", func(path string, d fs.DirEntry, err error) error {
-		if err != nil { return err }
-		if !d.IsDir() && strings.HasSuffix(path, ".html") {
-			templateNames = append(templateNames, path)
-		}
-		return nil
-	})
-	tmpl = template.Must(template.New("").Funcs(template.FuncMap{
+	tmpl = template.New("").Funcs(template.FuncMap{
 		"formatMoney": func(f float64) string { return fmt.Sprintf("$%.2f", f) },
 		"formatTime":  func(s string) string { return s },
 		"yesno":       func(s string) string { if s == "t" { return "Sí" }; return "No" },
-	}).ParseFS(sub, templateNames...))
+	})
+	fs.WalkDir(sub, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil { return err }
+		if d.IsDir() || !strings.HasSuffix(path, ".html") { return nil }
+		b, err := fs.ReadFile(sub, path)
+		if err != nil { return err }
+		tmpl = template.Must(tmpl.New(path).Parse(string(b)))
+		return nil
+	})
 
 	mux := http.NewServeMux()
 
