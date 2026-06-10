@@ -14,7 +14,7 @@
 .product-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:.5rem; }
 .product-card { background:white; border-radius:10px; padding:.75rem; box-shadow:0 1px 3px rgba(0,0,0,.08); cursor:pointer; transition:transform .1s,box-shadow .1s; display:flex; flex-direction:column; align-items:center; text-align:center; border:2px solid transparent; user-select:none; -webkit-tap-highlight-color:transparent; }
 .product-card:active { transform:scale(.96); box-shadow:0 1px 1px rgba(0,0,0,.05); }
-.product-card .avatar { width:48px; height:48px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.3rem; font-weight:700; color:white; margin-bottom:.4rem; flex-shrink:0; }
+.product-card .avatar { width:48px; height:48px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.2rem; color:white; margin-bottom:.4rem; flex-shrink:0; }
 .product-card .pname { font-size:.8rem; font-weight:500; line-height:1.2; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; margin-bottom:.25rem; word-break:break-word; }
 .product-card .pprice { font-size:.95rem; font-weight:700; color:#059669; }
 .product-card .pstock { font-size:.65rem; color:#9ca3af; }
@@ -87,7 +87,7 @@
 </div>
 
 <button class="cart-fab" id="cart-fab" onclick="toggleCart()">
-  🛒<span class="badge" id="fab-count">0</span>
+  <i class="fas fa-shopping-cart"></i><span class="badge" id="fab-count">0</span>
 </button>
 
 <script>
@@ -108,14 +108,32 @@ fetch('/api/productos').then(function(r){return r.json()}).then(function(ps){
   renderProductos(ps);
 });
 
+function iconoProducto(desc){
+  var d = (desc||'').toLowerCase();
+  if(d.includes('agua')) return 'ti ti-droplet';
+  if(d.includes('coca') || d.includes('cola') || d.includes('peñafiel') || d.includes('penafiel') || d.includes('sidral') || d.includes('mundet') || d.includes('squirt') || d.includes('jarrito') || d.includes('red cola') || d.includes('kola loca')) return 'ti ti-bottle';
+  if(d.includes('boing') || d.includes('jugo') || d.includes('jumex') || d.includes('vida ') || d.includes('valle')) return 'ti ti-juice';
+  if(d.includes('leche') || d.includes('alpura') || d.includes('lechita') || d.includes('yogur')) return 'ti ti-milk';
+  if(d.includes('cafe') || d.includes('coffe') || d.includes('fuzetea')) return 'ti ti-mug';
+  if(d.includes('electrolit') || d.includes('gatorade') || d.includes('monster') || d.includes('volt') || d.includes('vol ')) return 'ti ti-bolt';
+  if(d.includes('sopa') || d.includes('maruchan')) return 'ti ti-bowl-spoon';
+  if(d.includes('galleta') || d.includes('oreo') || d.includes('principe') || d.includes('emperador') || d.includes('chokis') || d.includes('canelitas')) return 'ti ti-cookie';
+  if(d.includes('pan') || d.includes('bimbo') || d.includes('conchas') || d.includes('donas') || d.includes('donitas') || d.includes('mantecada') || d.includes('roles') || d.includes('rebanada') || d.includes('colchones')) return 'ti ti-bread';
+  if(d.includes('sabritas') || d.includes('doritos') || d.includes('chetos') || d.includes('takis') || d.includes('fritos') || d.includes('rancheritos') || d.includes('tostitos') || d.includes('crujitos') || d.includes('paketaxo') || d.includes('bolzaza') || d.includes('rufles') || d.includes('chips')) return 'ti ti-chips';
+  if(d.includes('fabuloso') || d.includes('blanqueador') || d.includes('papel')) return 'ti ti-soap';
+  if(d.includes('pastel') || d.includes('pay ') || d.includes('pinguinos') || d.includes('gansito') || d.includes('submarinos') || d.includes('negrito') || d.includes('sponch') || d.includes('halls') || d.includes('pulparindo') || d.includes('duvalin') || d.includes('bombonetes') || d.includes('kinder') || d.includes('milky') || d.includes('snikers')) return 'ti ti-candy';
+  if(d.includes('aspirina') || d.includes('ibuprofeno') || d.includes('paracet') || d.includes('sal de uvas')) return 'ti ti-pill';
+  return 'ti ti-box';
+}
+
 function renderProductos(lista){
   var grid = document.getElementById('product-grid');
   if(!lista.length){ grid.innerHTML = '<div class="empty-grid">Sin productos</div>'; return; }
   grid.innerHTML = lista.map(function(p){
     var color = deptColors[p.dept] || '#6b7280';
-    var letter = (p.descripcion||p.codigo).charAt(0).toUpperCase();
+    var icono = iconoProducto(p.descripcion);
     return '<div class="product-card" onclick="agregarAlCarrito(\''+p.codigo+'\')">'+
-      '<div class="avatar" style="background:'+color+'">'+letter+'</div>'+
+      '<div class="avatar" style="background:'+color+'"><i class="'+icono+'"></i></div>'+
       '<div class="pname">'+(p.descripcion||p.codigo)+'</div>'+
       '<div class="pprice">$'+p.pventa.toFixed(2)+'</div>'+
       (p.dinventario<=5 && p.dinventario>0 ? '<div class="pstock">Stock: '+p.dinventario+'</div>' : '')+
@@ -151,19 +169,26 @@ function aplicarFiltros(){
 }
 
 function iniciarVenta(){
-  fetch('/api/tickets', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({caja_id:1, cajero_id:1})})
-  .then(function(r){ return r.json(); }).then(function(t){ currentTicket = t.id; articulos=[]; actualizarCarrito(); })
+  return fetch('/api/tickets', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({caja_id:1, cajero_id:7})})
+  .then(function(r){ return r.json(); }).then(function(t){ currentTicket = t.id; articulos=[]; actualizarCarrito(); return t; })
   .catch(function(){ alert('No hay caja abierta. Abre la caja primero.'); window.location='/cajas'; });
 }
 
+var ventaPending = null;
 function agregarAlCarrito(codigo){
-  if(!currentTicket){ iniciarVenta(); }
   var p = allProductos.find(function(x){ return x.codigo === codigo; });
   if(!p) return;
-  var existente = articulos.find(function(a){ return a.producto_codigo === codigo; });
-  if(existente){ existente.cantidad += 1; actualizarCarrito(); return; }
-  articulos.push({producto_codigo:p.codigo, producto_nombre:p.descripcion, cantidad:1, precio_usado:p.pventa, ganancia:p.pventa-p.pcosto});
-  actualizarCarrito();
+  function addItem(){
+    var existente = articulos.find(function(a){ return a.producto_codigo === codigo; });
+    if(existente){ existente.cantidad += 1; actualizarCarrito(); return; }
+    articulos.push({producto_codigo:p.codigo, producto_nombre:p.descripcion, cantidad:1, precio_usado:p.pventa, ganancia:p.pventa-p.pcosto});
+    actualizarCarrito();
+  }
+  if(!currentTicket){
+    if(!ventaPending){ ventaPending = iniciarVenta().then(function(){ ventaPending=null; addItem(); }); }
+    return;
+  }
+  addItem();
 }
 
 function actualizarCarrito(){
@@ -181,7 +206,7 @@ function actualizarCarrito(){
     return '<div class="cart-item">'+
       '<div class="ci-info"><div class="ci-name">'+a.producto_nombre+'</div><div class="ci-price">$'+(a.cantidad*a.precio_usado).toFixed(2)+'</div></div>'+
       '<div class="ci-qty"><button onclick="cambiarCantidad('+i+',-1)">−</button><span>'+a.cantidad+'</span><button onclick="cambiarCantidad('+i+',1)">+</button></div>'+
-      '<span class="ci-remove" onclick="eliminarArticulo('+i+')">✕</span></div>';
+      '<span class="ci-remove" onclick="eliminarArticulo('+i+')"><i class="fas fa-times"></i></span></div>';
   }).join('');
 }
 

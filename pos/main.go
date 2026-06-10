@@ -28,6 +28,7 @@ var schemaSQL string
 
 var db *sql.DB
 var tmpl *template.Template
+var pageTmpls map[string]*template.Template
 
 func main() {
 	var err error
@@ -48,17 +49,27 @@ func main() {
 	}
 
 	sub, _ := fs.Sub(templateFS, "templates")
-	tmpl = template.New("").Funcs(template.FuncMap{
+	baseBytes, _ := fs.ReadFile(sub, "base.html")
+	loginBytes, _ := fs.ReadFile(sub, "login.html")
+	fmap := template.FuncMap{
 		"formatMoney": func(f float64) string { return fmt.Sprintf("$%.2f", f) },
 		"formatTime":  func(s string) string { return s },
 		"yesno":       func(s string) string { if s == "t" { return "Sí" }; return "No" },
-	})
+	}
+	// Standalone templates (login.html) in shared set
+	tmpl = template.New("").Funcs(fmap)
+	template.Must(tmpl.New("login.html").Parse(string(loginBytes)))
+	// Page templates: each gets its own namespace to avoid define "content" collision
+	pageTmpls = make(map[string]*template.Template)
 	fs.WalkDir(sub, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil { return err }
 		if d.IsDir() || !strings.HasSuffix(path, ".html") { return nil }
+		if path == "base.html" || path == "login.html" { return nil }
 		b, err := fs.ReadFile(sub, path)
 		if err != nil { return err }
-		tmpl = template.Must(tmpl.New(path).Parse(string(b)))
+		combined := `{{define "base.html"}}` + string(baseBytes) + `{{end}}` + string(b)
+		t := template.Must(template.New(path).Funcs(fmap).Parse(combined))
+		pageTmpls[path] = t
 		return nil
 	})
 
@@ -136,24 +147,24 @@ func main() {
 	mux.HandleFunc("POST /login", handleLogin)
 	mux.HandleFunc("GET /logout", handleLogout)
 
-	mux.HandleFunc("GET /productos", handleProductosPage)
-	mux.HandleFunc("GET /productos/nuevo", handleProductoFormPage)
-	mux.HandleFunc("GET /productos/{codigo}/editar", handleProductoEditPage)
+	mux.HandleFunc("GET /productos", withAdmin(handleProductosPage))
+	mux.HandleFunc("GET /productos/nuevo", withAdmin(handleProductoFormPage))
+	mux.HandleFunc("GET /productos/{codigo}/editar", withAdmin(handleProductoEditPage))
 
 	mux.HandleFunc("GET /ventas", handleVentasPage)
 	mux.HandleFunc("GET /ventas/pos", handlePOSPage)
 
-	mux.HandleFunc("GET /clientes", handleClientesPage)
-	mux.HandleFunc("GET /clientes/nuevo", handleClienteFormPage)
-	mux.HandleFunc("GET /clientes/{numero}/editar", handleClienteEditPage)
+	mux.HandleFunc("GET /clientes", withAdmin(handleClientesPage))
+	mux.HandleFunc("GET /clientes/nuevo", withAdmin(handleClienteFormPage))
+	mux.HandleFunc("GET /clientes/{numero}/editar", withAdmin(handleClienteEditPage))
 
 	mux.HandleFunc("GET /tickets", handleTicketsPage)
 	mux.HandleFunc("GET /tickets/{id}", handleTicketDetailPage)
 
-	mux.HandleFunc("GET /cajas", handleCajasPage)
-	mux.HandleFunc("GET /reportes", handleReportesPage)
-	mux.HandleFunc("GET /proveedores", handleProveedoresPage)
-	mux.HandleFunc("GET /usuarios", handleUsuariosPage)
+	mux.HandleFunc("GET /cajas", withAdmin(handleCajasPage))
+	mux.HandleFunc("GET /reportes", withAdmin(handleReportesPage))
+	mux.HandleFunc("GET /proveedores", withAdmin(handleProveedoresPage))
+	mux.HandleFunc("GET /usuarios", withAdmin(handleUsuariosPage))
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -182,8 +193,14 @@ func migrate(db *sql.DB) error {
 	var count int
 	db.QueryRow("SELECT COUNT(*) FROM USUARIOS").Scan(&count)
 	if count == 0 {
-		db.Exec(`INSERT INTO USUARIOS (usuario, clave, activo, created_on) VALUES (?, ?, 't', ?)`,
+		db.Exec(`INSERT INTO USUARIOS (usuario, clave, activo, created_on, rol) VALUES (?, ?, 't', ?, 'admin')`,
 			"admin", hashPassword("admin"), time.Now().Format("2006-01-02 15:04:05"))
+	}
+
+	var hasRol int
+	db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('USUARIOS') WHERE name='rol'").Scan(&hasRol)
+	if hasRol == 0 {
+		db.Exec(`ALTER TABLE USUARIOS ADD COLUMN rol TEXT DEFAULT 'helper'`)
 	}
 
 	return nil
@@ -217,9 +234,32 @@ func withAuth(next http.Handler) http.Handler {
 	})
 }
 
-func render(w http.ResponseWriter, name string, data interface{}) {
+func withAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		roleCookie, err := r.Cookie("role")
+		if err != nil || roleCookie.Value != "admin" {
+			http.Redirect(w, r, "/ventas/pos", http.StatusSeeOther)
+			return
+		}
+		next(w, r)
+	}
+}
+
+func render(w http.ResponseWriter, r *http.Request, name string, data PageData) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, name, data); err != nil {
+	if cookie, err := r.Cookie("session"); err == nil {
+		data.User = cookie.Value
+	}
+	if rc, err := r.Cookie("role"); err == nil {
+		data.Role = rc.Value
+	}
+	var err error
+	if t, ok := pageTmpls[name]; ok {
+		err = t.Execute(w, data)
+	} else {
+		err = tmpl.ExecuteTemplate(w, name, data)
+	}
+	if err != nil {
 		log.Printf("Template error: %v", err)
 		http.Error(w, err.Error(), 500)
 	}

@@ -2,7 +2,7 @@
 {{define "content"}}
 <div class="flex-between mb-1">
     <h1>Clientes</h1>
-    <a href="/clientes/nuevo" class="btn btn-primary">+ Nuevo Cliente</a>
+    <a href="/clientes/nuevo" class="btn btn-primary"><i class="fas fa-plus"></i> Nuevo Cliente</a>
 </div>
 <div class="card">
     <div class="search-box">
@@ -19,7 +19,7 @@ fetch('/api/clientes').then(r=>r.json()).then(cs=>{ allClientes=cs; renderClient
 function renderClientes(cs){
     var tbody = document.getElementById('clientes-list');
     if(cs.length===0){ tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Sin clientes</td></tr>'; return; }
-    tbody.innerHTML = cs.map(function(c){ return '<tr><td>'+c.numero+'</td><td>'+c.nombre+'</td><td>'+c.telefono+'</td><td>$'+c.dsaldoactual.toFixed(2)+'</td><td>$'+c.limite_credito.toFixed(2)+'</td><td><a href="/clientes/'+c.numero+'/editar" class="btn btn-sm btn-outline">Editar</a></td></tr>'; }).join('');
+    tbody.innerHTML = cs.map(function(c){ return '<tr><td>'+c.numero+'</td><td>'+c.nombre+'</td><td>'+c.telefono+'</td><td>$'+c.dsaldoactual.toFixed(2)+'</td><td>$'+c.limite_credito.toFixed(2)+'</td><td><a href="/clientes/'+c.numero+'/editar" class="btn btn-sm btn-outline"><i class="fas fa-edit"></i> Editar</a></td></tr>'; }).join('');
 }
 function filtrarClientes(q){
     if(!q) return renderClientes(allClientes);

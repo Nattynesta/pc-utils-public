@@ -66,6 +66,7 @@ type Usuario struct {
 	Direccion      string `json:"direccion"`
 	Telefono       string `json:"telefono"`
 	Usuario        string `json:"usuario"`
+	Rol            string `json:"rol"`
 	Activo         string `json:"activo"`
 	CreatedOn      string `json:"created_on"`
 	Correo         string `json:"correo"`

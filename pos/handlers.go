@@ -323,7 +323,7 @@ func handleMedidasCreate(w http.ResponseWriter, r *http.Request) {
 // --- Usuarios ---
 
 func handleUsuariosList(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Query("SELECT id, COALESCE(nombre_completo,''), COALESCE(direccion,''), COALESCE(telefono,''), usuario, COALESCE(activo,'t'), COALESCE(created_on,''), COALESCE(correo,''), esta_en_caja_id FROM USUARIOS ORDER BY usuario")
+	rows, err := db.Query("SELECT id, COALESCE(nombre_completo,''), COALESCE(direccion,''), COALESCE(telefono,''), usuario, COALESCE(rol,'helper'), COALESCE(activo,'t'), COALESCE(created_on,''), COALESCE(correo,''), esta_en_caja_id FROM USUARIOS ORDER BY usuario")
 	if err != nil {
 		jsonErr(w, err.Error(), 500)
 		return
@@ -332,7 +332,7 @@ func handleUsuariosList(w http.ResponseWriter, r *http.Request) {
 	us := make([]Usuario, 0)
 	for rows.Next() {
 		var u Usuario
-		rows.Scan(&u.ID, &u.NombreCompleto, &u.Direccion, &u.Telefono, &u.Usuario, &u.Activo, &u.CreatedOn, &u.Correo, &u.EstaEnCajaID)
+		rows.Scan(&u.ID, &u.NombreCompleto, &u.Direccion, &u.Telefono, &u.Usuario, &u.Rol, &u.Activo, &u.CreatedOn, &u.Correo, &u.EstaEnCajaID)
 		us = append(us, u)
 	}
 	if us == nil {
@@ -347,8 +347,11 @@ func handleUsuariosCreate(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, "JSON invalido", 400)
 		return
 	}
-	_, err := db.Exec("INSERT INTO USUARIOS (nombre_completo, direccion, telefono, usuario, clave, activo, created_on, correo) VALUES (?,?,?,?,?,?,?,?)",
-		u.NombreCompleto, u.Direccion, u.Telefono, u.Usuario, hashPassword(u.Usuario), u.Activo, now(), u.Correo)
+	if u.Rol == "" {
+		u.Rol = "helper"
+	}
+	_, err := db.Exec("INSERT INTO USUARIOS (nombre_completo, direccion, telefono, usuario, clave, activo, created_on, correo, rol) VALUES (?,?,?,?,?,?,?,?,?)",
+		u.NombreCompleto, u.Direccion, u.Telefono, u.Usuario, hashPassword(u.Usuario), u.Activo, now(), u.Correo, u.Rol)
 	if err != nil {
 		jsonErr(w, err.Error(), 400)
 		return
@@ -363,8 +366,8 @@ func handleUsuariosUpdate(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, "JSON invalido", 400)
 		return
 	}
-	q := "UPDATE USUARIOS SET nombre_completo=?, direccion=?, telefono=?, activo=?, correo=?"
-	args := []interface{}{u.NombreCompleto, u.Direccion, u.Telefono, u.Activo, u.Correo}
+	q := "UPDATE USUARIOS SET nombre_completo=?, direccion=?, telefono=?, activo=?, correo=?, rol=?"
+	args := []interface{}{u.NombreCompleto, u.Direccion, u.Telefono, u.Activo, u.Correo, u.Rol}
 	if u.Usuario != "" {
 		q += ", usuario=?"
 		args = append(args, u.Usuario)
@@ -540,7 +543,7 @@ func handleTicketCrear(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := tx.Exec(`INSERT INTO VENTATICKETS (folio, caja_id, cajero_id, creado_en, esta_abierto, operacion_id, es_modificable, nombre) VALUES (?,?,?,?,'t',?,'t','PV)`, folio, req.CajaID, req.CajeroID, now(), operacionID)
+	res, err := tx.Exec(`INSERT INTO VENTATICKETS (folio, caja_id, cajero_id, creado_en, esta_abierto, operacion_id, es_modificable, nombre) VALUES (?,?,?,?,'t',?,'t','PV')`, folio, req.CajaID, req.CajeroID, now(), operacionID)
 	if err != nil {
 		jsonErr(w, err.Error(), 400)
 		return
@@ -554,7 +557,7 @@ func handleTicketCrear(w http.ResponseWriter, r *http.Request) {
 func handleTicketGet(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var t VentaTicket
-	err := db.QueryRow(`SELECT id, folio, caja_id, cajero_id, COALESCE(nombre,''), creado_en, COALESCE(subtotal,0), COALESCE(impuestos,0), COALESCE(total,0), COALESCE(ganancia,0), esta_abierto, cliente_id, vendido_en, es_modificable, COALESCE(pago_con,0), COALESCE(moneda,''), COALESCE(numero_articulos,0), pagado_en, esta_cancelado, operacion_id, COALESCE(forma_pago,''), COALESCE(referencia,''), COALESCE(total_devuelto,0) FROM VENTATICKETS WHERE id=?`, id).Scan(&t.ID, &t.Folio, &t.CajaID, &t.CajeroID, &t.Nombre, &t.CreadoEn, &t.Subtotal, &t.Impuestos, &t.Total, &t.Ganancia, &t.EstaAbierto, &t.ClienteID, &t.VendidoEn, &t.EsModificable, &t.PagoCon, &t.Moneda, &t.NumeroArticulos, &t.PagadoEn, &t.EstaCancelado, &t.OperacionID, &t.FormaPago, &t.Referencia, &t.TotalDevuelto)
+	err := db.QueryRow(`SELECT id, folio, caja_id, cajero_id, COALESCE(nombre,''), creado_en, COALESCE(subtotal,0), COALESCE(impuestos,0), COALESCE(total,0), COALESCE(ganancia,0), esta_abierto, cliente_id, COALESCE(vendido_en,''), es_modificable, COALESCE(pago_con,0), COALESCE(moneda,''), COALESCE(numero_articulos,0), COALESCE(pagado_en,''), esta_cancelado, operacion_id, COALESCE(forma_pago,''), COALESCE(referencia,''), COALESCE(total_devuelto,0) FROM VENTATICKETS WHERE id=?`, id).Scan(&t.ID, &t.Folio, &t.CajaID, &t.CajeroID, &t.Nombre, &t.CreadoEn, &t.Subtotal, &t.Impuestos, &t.Total, &t.Ganancia, &t.EstaAbierto, &t.ClienteID, &t.VendidoEn, &t.EsModificable, &t.PagoCon, &t.Moneda, &t.NumeroArticulos, &t.PagadoEn, &t.EstaCancelado, &t.OperacionID, &t.FormaPago, &t.Referencia, &t.TotalDevuelto)
 	if err == sql.ErrNoRows {
 		jsonErr(w, "Ticket no encontrado", 404)
 		return
@@ -615,7 +618,7 @@ func handleTicketAddArticulo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx.Exec(`UPDATE VENTATICKETS SET subtotal = (SELECT COALESCE(SUM(precio_usado * cantidad),0) FROM VENTATICKETS_ARTICULOS WHERE ticket_id=?), total = subtotal, ganancia = (SELECT COALESCE(SUM(ganancia),0) FROM VENTATICKETS_ARTICULOS WHERE ticket_id=?), numero_articulos = (SELECT COUNT(*) FROM VENTATICKETS_ARTICULOS WHERE ticket_id=?) WHERE id=?`, id, id, id, id)
+	tx.Exec(`UPDATE VENTATICKETS SET subtotal = (SELECT COALESCE(SUM(precio_usado * cantidad),0) FROM VENTATICKETS_ARTICULOS WHERE ticket_id=?), total = (SELECT COALESCE(SUM(precio_usado * cantidad),0) FROM VENTATICKETS_ARTICULOS WHERE ticket_id=?), ganancia = (SELECT COALESCE(SUM(ganancia),0) FROM VENTATICKETS_ARTICULOS WHERE ticket_id=?), numero_articulos = (SELECT COUNT(*) FROM VENTATICKETS_ARTICULOS WHERE ticket_id=?) WHERE id=?`, id, id, id, id, id)
 
 	tx.Exec(`INSERT INTO VENTAS (producto_codigo, cantidad, fecha, ticket_id) VALUES (?,?,?,?)`, p.Codigo, req.Cantidad, now(), id)
 
@@ -634,7 +637,7 @@ func handleTicketRemoveArticulo(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 
 	tx.Exec("DELETE FROM VENTATICKETS_ARTICULOS WHERE id=? AND ticket_id=?", artID, id)
-	tx.Exec(`UPDATE VENTATICKETS SET subtotal = (SELECT COALESCE(SUM(precio_usado * cantidad),0) FROM VENTATICKETS_ARTICULOS WHERE ticket_id=?), total = subtotal, ganancia = (SELECT COALESCE(SUM(ganancia),0) FROM VENTATICKETS_ARTICULOS WHERE ticket_id=?), numero_articulos = (SELECT COUNT(*) FROM VENTATICKETS_ARTICULOS WHERE ticket_id=?) WHERE id=?`, id, id, id, id)
+	tx.Exec(`UPDATE VENTATICKETS SET subtotal = (SELECT COALESCE(SUM(precio_usado * cantidad),0) FROM VENTATICKETS_ARTICULOS WHERE ticket_id=?), total = (SELECT COALESCE(SUM(precio_usado * cantidad),0) FROM VENTATICKETS_ARTICULOS WHERE ticket_id=?), ganancia = (SELECT COALESCE(SUM(ganancia),0) FROM VENTATICKETS_ARTICULOS WHERE ticket_id=?), numero_articulos = (SELECT COUNT(*) FROM VENTATICKETS_ARTICULOS WHERE ticket_id=?) WHERE id=?`, id, id, id, id, id)
 	tx.Commit()
 	jsonResp(w, map[string]string{"ok": "Articulo eliminado"})
 }

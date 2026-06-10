@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS USUARIOS (
     permisos BLOB,
     created_on TEXT,
     correo TEXT,
-    esta_en_caja_id INTEGER
+    esta_en_caja_id INTEGER,
+    rol TEXT DEFAULT 'helper'
 );
 
 CREATE TABLE IF NOT EXISTS CAJAS (

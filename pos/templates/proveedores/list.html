@@ -2,7 +2,7 @@
 {{define "content"}}
 <div class="flex-between mb-1">
     <h1>Proveedores</h1>
-    <button class="btn btn-primary" onclick="mostrarFormProveedor()">+ Nuevo</button>
+    <button class="btn btn-primary" onclick="mostrarFormProveedor()"><i class="fas fa-plus"></i> Nuevo</button>
 </div>
 <div class="card">
     <table>
@@ -18,7 +18,7 @@
             <div class="form-group"><label>Nombre</label><input type="text" id="provNombre" required></div>
             <div class="form-group"><label>Direccion</label><input type="text" id="provDireccion"></div>
             <div class="form-group"><label>Telefonos</label><input type="text" id="provTelefonos"></div>
-            <div class="flex"><button type="submit" class="btn btn-primary">Guardar</button> <button type="button" class="btn btn-outline" onclick="cerrarModal()">Cancelar</button></div>
+            <div class="flex"><button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Guardar</button> <button type="button" class="btn btn-outline" onclick="cerrarModal()"><i class="fas fa-times"></i> Cancelar</button></div>
         </form>
     </div>
 </div>

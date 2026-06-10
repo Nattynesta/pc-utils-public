@@ -13,7 +13,7 @@ fetch('/api/tickets').then(r=>r.json()).then(ts=>{
     if(ts.length===0){ tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Sin tickets</td></tr>'; return; }
     tbody.innerHTML = ts.map(function(t){
         var estado = t.esta_cancelado==='t' ? 'Cancelado' : (t.esta_abierto==='t' ? 'Abierto' : 'Pagado');
-        return '<tr><td>'+t.id+'</td><td>'+(t.folio||'-')+'</td><td>'+(t.creado_en||'')+'</td><td>$'+t.total.toFixed(2)+'</td><td>'+(t.numero_articulos||0)+'</td><td>'+estado+'</td><td><a href="/tickets/'+t.id+'" class="btn btn-sm btn-outline">Ver</a></td></tr>';
+        return '<tr><td>'+t.id+'</td><td>'+(t.folio||'-')+'</td><td>'+(t.creado_en||'')+'</td><td>$'+t.total.toFixed(2)+'</td><td>'+(t.numero_articulos||0)+'</td><td>'+estado+'</td><td><a href="/tickets/'+t.id+'" class="btn btn-sm btn-outline"><i class="fas fa-eye"></i> Ver</a></td></tr>';
     }).join('');
 });
 </script>

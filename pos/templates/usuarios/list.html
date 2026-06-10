@@ -2,11 +2,11 @@
 {{define "content"}}
 <div class="flex-between mb-1">
     <h1>Usuarios</h1>
-    <button class="btn btn-primary" onclick="mostrarFormUsuario()">+ Nuevo</button>
+    <button class="btn btn-primary" onclick="mostrarFormUsuario()"><i class="fas fa-plus"></i> Nuevo</button>
 </div>
 <div class="card">
     <table>
-        <thead><tr><th>ID</th><th>Usuario</th><th>Nombre</th><th>Activo</th><th>Creado</th><th>Acciones</th></tr></thead>
+        <thead><tr><th>ID</th><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Activo</th><th>Creado</th><th>Acciones</th></tr></thead>
         <tbody id="usuarios-list"></tbody>
     </table>
 </div>
@@ -22,8 +22,9 @@
                 <div class="form-group"><label>Correo</label><input type="email" id="userCorreo"></div>
             </div>
             <div class="form-group"><label>Direccion</label><input type="text" id="userDireccion"></div>
+            <div class="form-group"><label>Rol</label><select id="userRol"><option value="helper">Helper</option><option value="admin">Admin</option></select></div>
             <div class="form-group"><label><input type="checkbox" id="userActivo" checked> Activo</label></div>
-            <div class="flex"><button type="submit" class="btn btn-primary">Guardar</button> <button type="button" class="btn btn-outline" onclick="cerrarModal()">Cancelar</button></div>
+            <div class="flex"><button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Guardar</button> <button type="button" class="btn btn-outline" onclick="cerrarModal()"><i class="fas fa-times"></i> Cancelar</button></div>
         </form>
     </div>
 </div>
@@ -32,10 +33,10 @@ function loadUsuarios(){
     fetch('/api/usuarios').then(r=>r.json()).then(us=>{
         var tbody = document.getElementById('usuarios-list');
         if(us.length===0){ tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Sin usuarios</td></tr>'; return; }
-        tbody.innerHTML = us.map(function(u){ return '<tr><td>'+u.id+'</td><td>'+u.usuario+'</td><td>'+(u.nombre_completo||'')+'</td><td>'+(u.activo==='t'?'Si':'No')+'</td><td>'+(u.created_on||'')+'</td><td><button class="btn btn-sm btn-outline" onclick="editarUser('+u.id+')">Editar</button></td></tr>'; }).join('');
+        tbody.innerHTML = us.map(function(u){ return '<tr><td>'+u.id+'</td><td>'+u.usuario+'</td><td>'+(u.nombre_completo||'')+'</td><td>'+(u.rol||'helper')+'</td><td>'+(u.activo==='t'?'Si':'No')+'</td><td>'+(u.created_on||'')+'</td><td><button class="btn btn-sm btn-outline" onclick="editarUser('+u.id+')">Editar</button></td></tr>'; }).join('');
     });
 }
-function mostrarFormUsuario(){ document.getElementById('userModal').style.display='flex'; document.getElementById('userModalTitle').textContent='Nuevo Usuario'; ['userId','userUsuario','userNombre','userTelefono','userCorreo','userDireccion'].forEach(function(id){ document.getElementById(id).value=''; }); document.getElementById('userActivo').checked=true; }
+function mostrarFormUsuario(){ document.getElementById('userModal').style.display='flex'; document.getElementById('userModalTitle').textContent='Nuevo Usuario'; ['userId','userUsuario','userNombre','userTelefono','userCorreo','userDireccion'].forEach(function(id){ document.getElementById(id).value=''; }); document.getElementById('userRol').value='helper'; document.getElementById('userActivo').checked=true; }
 function cerrarModal(){ document.getElementById('userModal').style.display='none'; }
 function editarUser(id){
     fetch('/api/usuarios').then(r=>r.json()).then(function(us){
@@ -49,13 +50,14 @@ function editarUser(id){
         document.getElementById('userTelefono').value=u.telefono||'';
         document.getElementById('userCorreo').value=u.correo||'';
         document.getElementById('userDireccion').value=u.direccion||'';
+        document.getElementById('userRol').value=u.rol||'helper';
         document.getElementById('userActivo').checked = u.activo==='t';
     });
 }
 function saveUser(e){
     e.preventDefault();
     var id = document.getElementById('userId').value;
-    var data = {usuario: document.getElementById('userUsuario').value, nombre_completo: document.getElementById('userNombre').value, telefono: document.getElementById('userTelefono').value, correo: document.getElementById('userCorreo').value, direccion: document.getElementById('userDireccion').value, activo: document.getElementById('userActivo').checked ? 't' : 'f'};
+    var data = {usuario: document.getElementById('userUsuario').value, nombre_completo: document.getElementById('userNombre').value, telefono: document.getElementById('userTelefono').value, correo: document.getElementById('userCorreo').value, direccion: document.getElementById('userDireccion').value, rol: document.getElementById('userRol').value, activo: document.getElementById('userActivo').checked ? 't' : 'f'};
     var url = id ? '/api/usuarios/'+id : '/api/usuarios';
     var method = id ? 'PUT' : 'POST';
     fetch(url, {method:method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)})
