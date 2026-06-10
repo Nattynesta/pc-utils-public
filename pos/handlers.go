@@ -19,7 +19,7 @@ func handleProductosList(w http.ResponseWriter, r *http.Request) {
 	}
 	q := r.URL.Query().Get("q")
 	if q != "" {
-		var filtered []Producto
+		filtered := make([]Producto, 0)
 		q = strings.ToLower(q)
 		for _, p := range ps {
 			if strings.Contains(strings.ToLower(p.Codigo), q) || strings.Contains(strings.ToLower(p.Descripcion), q) {
@@ -92,15 +92,11 @@ func handleClientesList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rows.Close()
-	var cs []Cliente
+	cs := make([]Cliente, 0)
 	for rows.Next() {
 		var c Cliente
 		rows.Scan(&c.Numero, &c.Nombre, &c.Direccion, &c.Telefono, &c.Dsaldoactual, &c.Dtactualizasaldo, &c.LimiteCredito, &c.UltimoPagoEn, &c.Folio)
 		cs = append(cs, c)
-	}
-	q := r.URL.Query().Get("q")
-	if q != "" && cs == nil {
-		cs = []Cliente{}
 	}
 	jsonResp(w, cs)
 }
@@ -113,14 +109,11 @@ func handleClientesSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rows.Close()
-	var cs []Cliente
+	cs := make([]Cliente, 0)
 	for rows.Next() {
 		var c Cliente
 		rows.Scan(&c.Numero, &c.Nombre, &c.Direccion, &c.Telefono, &c.Dsaldoactual, &c.Dtactualizasaldo, &c.LimiteCredito, &c.UltimoPagoEn, &c.Folio)
 		cs = append(cs, c)
-	}
-	if cs == nil {
-		cs = []Cliente{}
 	}
 	jsonResp(w, cs)
 }
@@ -186,7 +179,7 @@ func handleProveedoresList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rows.Close()
-	var ps []Proveedor
+	ps := make([]Proveedor, 0)
 	for rows.Next() {
 		var p Proveedor
 		rows.Scan(&p.Num, &p.Nombre, &p.Direccion, &p.Telefonos)
@@ -251,7 +244,7 @@ func handleDepartamentosList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rows.Close()
-	var ds []Departamento
+	ds := make([]Departamento, 0)
 	for rows.Next() {
 		var d Departamento
 		rows.Scan(&d.ID, &d.Nombre, &d.PorcentajeImpuesto, &d.Activo)
@@ -301,7 +294,7 @@ func handleMedidasList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rows.Close()
-	var ms []Medida
+	ms := make([]Medida, 0)
 	for rows.Next() {
 		var m Medida
 		rows.Scan(&m.Codigo, &m.Nombre)
@@ -336,7 +329,7 @@ func handleUsuariosList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rows.Close()
-	var us []Usuario
+	us := make([]Usuario, 0)
 	for rows.Next() {
 		var u Usuario
 		rows.Scan(&u.ID, &u.NombreCompleto, &u.Direccion, &u.Telefono, &u.Usuario, &u.Activo, &u.CreatedOn, &u.Correo, &u.EstaEnCajaID)
@@ -395,7 +388,7 @@ func handleCajasList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rows.Close()
-	var cs []Caja
+	cs := make([]Caja, 0)
 	for rows.Next() {
 		var c Caja
 		rows.Scan(&c.ID, &c.Nombre, &c.UltimaIP, &c.UltimoIngreso, &c.NombrePC)
@@ -430,7 +423,7 @@ func handleOperacionesList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rows.Close()
-	var ops []Operacion
+	ops := make([]Operacion, 0)
 	for rows.Next() {
 		var o Operacion
 		rows.Scan(&o.ID, &o.DineroEnCaja, &o.TipoDeCambio, &o.InicioUsuarioID, &o.InicioEn, &o.CerroEn, &o.CajaID, &o.Abierta, &o.Ventas, &o.Salidas, &o.Entradas, &o.Pagos, &o.Impuestos, &o.Ganancias, &o.IngresosTarjeta, &o.IngresosVales, &o.IngresosEfectivo)
@@ -508,7 +501,7 @@ func handleTicketsList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rows.Close()
-	var ts []VentaTicket
+	ts := make([]VentaTicket, 0)
 	for rows.Next() {
 		var t VentaTicket
 		rows.Scan(&t.ID, &t.Folio, &t.CajaID, &t.CajeroID, &t.Nombre, &t.CreadoEn, &t.Subtotal, &t.Impuestos, &t.Total, &t.Ganancia, &t.EstaAbierto, &t.ClienteID, &t.VendidoEn, &t.EsModificable, &t.PagoCon, &t.Moneda, &t.NumeroArticulos, &t.PagadoEn, &t.EstaCancelado, &t.OperacionID, &t.FormaPago, &t.Referencia, &t.TotalDevuelto)
@@ -706,7 +699,7 @@ func handleMovimientosList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rows.Close()
-	var ms []Movimiento
+	ms := make([]Movimiento, 0)
 	for rows.Next() {
 		var m Movimiento
 		rows.Scan(&m.ID, &m.OperacionID, &m.Monto, &m.CuandoFue, &m.Comentarios, &m.Tipo, &m.ClienteID, &m.CajaID, &m.CajeroID)
@@ -760,7 +753,7 @@ func handleHistorialInventario(w http.ResponseWriter, r *http.Request) {
 		CodigoProducto string  `json:"codigo_producto"`
 		CajaID         *int    `json:"caja_id"`
 	}
-	var hs []HI
+	hs := make([]HI, 0)
 	for rows.Next() {
 		var h HI
 		rows.Scan(&h.ID, &h.UsuarioID, &h.CuandoFue, &h.Tipo, &h.Habia, &h.Cantidad, &h.CodigoProducto, &h.CajaID)
@@ -825,7 +818,7 @@ func handleImpuestosList(w http.ResponseWriter, r *http.Request) {
 		Defecto     string  `json:"defecto"`
 		Activo      string  `json:"activo"`
 	}
-	var is []Impuesto
+	is := make([]Impuesto, 0)
 	for rows.Next() {
 		var i Impuesto
 		rows.Scan(&i.ID, &i.Nombre, &i.Porcentaje, &i.Defecto, &i.Activo)
@@ -893,7 +886,7 @@ func handlePromocionesList(w http.ResponseWriter, r *http.Request) {
 		Hasta          float64 `json:"hasta"`
 		PrecioPromocion float64 `json:"precio_promocion"`
 	}
-	var ps []Promocion
+	ps := make([]Promocion, 0)
 	for rows.Next() {
 		var p Promocion
 		rows.Scan(&p.ID, &p.Nombre, &p.ProductoCodigo, &p.Desde, &p.Hasta, &p.PrecioPromocion)
@@ -960,7 +953,7 @@ func handleReportesVentasDiarias(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rows.Close()
-	var rs []map[string]interface{}
+	rs := make([]map[string]interface{}, 0)
 	for rows.Next() {
 		var dia string
 		var tickets int
@@ -981,7 +974,7 @@ func handleReportesTopProductos(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rows.Close()
-	var rs []map[string]interface{}
+	rs := make([]map[string]interface{}, 0)
 	for rows.Next() {
 		var nombre string
 		var vendidos, total float64

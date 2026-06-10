@@ -197,7 +197,7 @@ func listProductos() ([]Producto, error) {
 	}
 	defer rows.Close()
 
-	var ps []Producto
+	ps := make([]Producto, 0)
 	for rows.Next() {
 		var p Producto
 		rows.Scan(&p.Codigo, &p.Descripcion, &p.Tventa, &p.Pcosto, &p.Pventa, &p.Dept, &p.Provid, &p.Umedida, &p.Mayoreo, &p.Iprioridad, &p.Dinventario, &p.Dinvminimo, &p.Dinvmaximo, &p.ChecadoEn, &p.PorcentajeGanancia, &p.Componentes, &p.Impuestos)
