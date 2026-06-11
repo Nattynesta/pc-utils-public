@@ -68,6 +68,25 @@
             <label>Impuestos (ids separados por coma)</label>
             <input type="text" id="impuestos" placeholder="1,2,3">
         </div>
+        <div class="form-group">
+            <label>Imagen Local</label>
+            <input type="file" id="imagen_local" accept="image/*">
+            <small style="color:#6b7280">JPG, PNG, WebP máx 10MB</small>
+            <div id="imagen-preview" style="margin-top:.5rem; display:none;">
+                <img id="preview-img" style="max-width:200px; max-height:200px; border-radius:8px; border:1px solid #e5e7eb;">
+            </div>
+        </div>
+        <details style="margin-top:1rem;">
+            <summary style="cursor:pointer; font-weight:500; color:#1e3a5f;">Datos OpenFoods (opcional)</summary>
+            <div style="margin-top:.5rem; display:grid; grid-template-columns:1fr 1fr; gap:.75rem;">
+                <div class="form-group"><label>Marca</label><input type="text" id="marca"></div>
+                <div class="form-group"><label>Categorías</label><input type="text" id="categorias" placeholder="ej: Bebidas,Refrescos"></div>
+                <div class="form-group"><label>Ingredientes</label><textarea id="ingredientes" rows="2" style="font-size:.85rem;"></textarea></div>
+                <div class="form-group"><label>Nutrición (JSON)</label><textarea id="nutricion" rows="2" style="font-size:.85rem;" placeholder='{"energy-kcal":200,"sugars":10,"fat":5}'></textarea></div>
+                <div class="form-group"><label>NutriScore</label><select id="nutriscore"><option value="">--</option><option value="a">A</option><option value="b">B</option><option value="c">C</option><option value="d">D</option><option value="e">E</option></select></div>
+                <div class="form-group"><label>Presentación</label><input type="text" id="cantidad_presentacion" placeholder="ej: 350 ml"></div>
+            </div>
+        </details>
         <div class="flex mt-1">
             <button type="submit" class="btn btn-primary">Guardar</button>
             <a href="/productos" class="btn btn-outline">Cancelar</a>
@@ -89,7 +108,7 @@ fetch('/api/proveedores').then(r=>r.json()).then(ps=>{
 });
 
 var codigoEdit = document.getElementById('codigo_original').value;
-if(codigoEdit){
+    if(codigoEdit){
     fetch('/api/productos/'+encodeURIComponent(codigoEdit)).then(r=>r.json()).then(function(p){
         document.getElementById('codigo').value = p.codigo;
         document.getElementById('descripcion').value = p.descripcion;
@@ -104,8 +123,30 @@ if(codigoEdit){
         if(p.umedida) document.getElementById('umedida').value = p.umedida;
         if(p.provid) document.getElementById('provid').value = p.provid;
         document.getElementById('impuestos').value = p.impuestos;
+        document.getElementById('marca').value = p.marca || '';
+        document.getElementById('categorias').value = p.categorias || '';
+        document.getElementById('ingredientes').value = p.ingredientes || '';
+        document.getElementById('nutricion').value = p.nutricion || '';
+        document.getElementById('nutriscore').value = p.nutriscore || '';
+        document.getElementById('cantidad_presentacion').value = p.cantidad_presentacion || '';
+        if(p.imagen_local){
+            document.getElementById('preview-img').src = p.imagen_local;
+            document.getElementById('imagen-preview').style.display = 'block';
+        }
     });
 }
+
+document.getElementById('imagen_local').addEventListener('change', function(e){
+    var file = e.target.files[0];
+    if(file){
+        var reader = new FileReader();
+        reader.onload = function(e){
+            document.getElementById('preview-img').src = e.target.result;
+            document.getElementById('imagen-preview').style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+    }
+});
 
 function saveProducto(e){
     e.preventDefault();
@@ -124,12 +165,31 @@ function saveProducto(e){
         porcentaje_ganancia: parseInt(document.getElementById('porcentaje_ganancia').value)||0,
         dinventario: parseFloat(document.getElementById('dinventario').value)||0,
         dinvminimo: parseFloat(document.getElementById('dinvminimo').value)||0,
-        impuestos: document.getElementById('impuestos').value
+        impuestos: document.getElementById('impuestos').value,
+        imagen_local: document.getElementById('imagen_local').files[0] ? '' : undefined,
+        marca: document.getElementById('marca').value || '',
+        categorias: document.getElementById('categorias').value || '',
+        ingredientes: document.getElementById('ingredientes').value || '',
+        nutricion: document.getElementById('nutricion').value || '',
+        nutriscore: document.getElementById('nutriscore').value || '',
+        cantidad_presentacion: document.getElementById('cantidad_presentacion').value || ''
     };
     var url = isEdit ? '/api/productos/'+encodeURIComponent(codigoEdit) : '/api/productos';
     var method = isEdit ? 'PUT' : 'POST';
     fetch(url, {method:method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)})
-    .then(function(r){ if(r.ok) window.location='/productos'; else r.json().then(function(d){ alert('Error: '+d.error); }); });
+    .then(function(r){ 
+        if(r.ok){
+            // Subir imagen si hay archivo
+            var file = document.getElementById('imagen_local').files[0];
+            if(file){
+                var fd = new FormData();
+                fd.append('imagen', file);
+                fetch('/api/productos/'+encodeURIComponent(codigo)+'/imagen', {method:'POST', body:fd})
+                .then(function(r2){ if(!r2.ok) alert('Imagen guardada pero error subiendo archivo'); });
+            }
+            window.location='/productos'; 
+        } else r.json().then(function(d){ alert('Error: '+d.error); }); 
+    });
     return false;
 }
 </script>

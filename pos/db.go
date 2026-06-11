@@ -27,8 +27,16 @@ type Producto struct {
 	PorcentajeGanancia  int     `json:"porcentaje_ganancia"`
 	Componentes         string  `json:"componentes"`
 	Impuestos           string  `json:"impuestos"`
+	ImagenLocal         string  `json:"imagen_local,omitempty"`
+	Marca               string  `json:"marca,omitempty"`
+	Categorias          string  `json:"categorias,omitempty"`
+	Ingredientes        string  `json:"ingredientes,omitempty"`
+	Nutriscore          string  `json:"nutriscore,omitempty"`
+	CantidadPresentacion string `json:"cantidad_presentacion,omitempty"`
+	Nutricion           string  `json:"nutricion,omitempty"`
 	OffImageUrl         string  `json:"off_image_url,omitempty"`
 	OffImageSmall       string  `json:"off_image_small,omitempty"`
+	OffImageGrande      string  `json:"off_image_grande,omitempty"`
 	OffName             string  `json:"off_name,omitempty"`
 }
 
@@ -56,6 +64,7 @@ type Departamento struct {
 	Nombre            string `json:"nombre"`
 	PorcentajeImpuesto int   `json:"porcentaje_impuesto"`
 	Activo            string `json:"activo"`
+	Orden             int    `json:"orden"`
 }
 
 type Medida struct {
@@ -195,7 +204,19 @@ func nextFolio(tx *sql.Tx) int {
 }
 
 func listProductos() ([]Producto, error) {
-	rows, err := db.Query(`SELECT p.codigo, p.descripcion, p.tventa, COALESCE(p.pcosto,0), COALESCE(p.pventa,0), p.dept, p.provid, p.umedida, COALESCE(p.mayoreo,0), p.iprioridad, COALESCE(p.dinventario,0), COALESCE(p.dinvminimo,0), COALESCE(p.dinvmaximo,0), COALESCE(p.checado_en,''), COALESCE(p.porcentaje_ganancia,0), COALESCE(p.componentes,''), COALESCE(p.impuestos,''), o.image_url, o.image_small, o.name FROM PRODUCTOS p LEFT JOIN PRODUCTOS_OFF o ON p.codigo = o.codigo ORDER BY p.descripcion`)
+	rows, err := db.Query(`
+		SELECT 
+			p.codigo, p.descripcion, p.tventa, COALESCE(p.pcosto,0), COALESCE(p.pventa,0), 
+			p.dept, p.provid, p.umedida, COALESCE(p.mayoreo,0), p.iprioridad, 
+			COALESCE(p.dinventario,0), COALESCE(p.dinvminimo,0), COALESCE(p.dinvmaximo,0), 
+			COALESCE(p.checado_en,''), COALESCE(p.porcentaje_ganancia,0), COALESCE(p.componentes,''), COALESCE(p.impuestos,''),
+			COALESCE(p.imagen_local,''),
+			COALESCE(o.nombre,''), COALESCE(o.marca,''), COALESCE(o.categorias,''), COALESCE(o.ingredientes,''),
+			COALESCE(o.nutriscore,''), COALESCE(o.cantidad_presentacion,''), COALESCE(o.nutricion,''),
+			COALESCE(o.imagen_url,''), COALESCE(o.imagen_small,''), COALESCE(o.imagen_grande,''), COALESCE(o.nombre,'')
+		FROM PRODUCTOS p
+		LEFT JOIN productos_openfoods o ON p.codigo = o.codigo
+		ORDER BY p.descripcion`)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +225,7 @@ func listProductos() ([]Producto, error) {
 	ps := make([]Producto, 0)
 	for rows.Next() {
 		var p Producto
-		rows.Scan(&p.Codigo, &p.Descripcion, &p.Tventa, &p.Pcosto, &p.Pventa, &p.Dept, &p.Provid, &p.Umedida, &p.Mayoreo, &p.Iprioridad, &p.Dinventario, &p.Dinvminimo, &p.Dinvmaximo, &p.ChecadoEn, &p.PorcentajeGanancia, &p.Componentes, &p.Impuestos, &p.OffImageUrl, &p.OffImageSmall, &p.OffName)
+		rows.Scan(&p.Codigo, &p.Descripcion, &p.Tventa, &p.Pcosto, &p.Pventa, &p.Dept, &p.Provid, &p.Umedida, &p.Mayoreo, &p.Iprioridad, &p.Dinventario, &p.Dinvminimo, &p.Dinvmaximo, &p.ChecadoEn, &p.PorcentajeGanancia, &p.Componentes, &p.Impuestos, &p.ImagenLocal, &p.Marca, &p.Categorias, &p.Ingredientes, &p.Nutriscore, &p.CantidadPresentacion, &p.Nutricion, &p.OffImageUrl, &p.OffImageSmall, &p.OffImageGrande, &p.OffName)
 		ps = append(ps, p)
 	}
 	return ps, nil

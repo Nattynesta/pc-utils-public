@@ -11,6 +11,8 @@ import (
 	"io"
 	"net/url"
 	"sync"
+	"os"
+	"path/filepath"
 )
 
 var offSync sync.Mutex
@@ -43,19 +45,49 @@ func handleProductosCreate(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, "JSON invalido", 400)
 		return
 	}
-	_, err := db.Exec(`INSERT INTO PRODUCTOS (codigo, descripcion, tventa, pcosto, pventa, dept, provid, umedida, mayoreo, iprioridad, dinventario, dinvminimo, dinvmaximo, porcentaje_ganancia, componentes, impuestos) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		p.Codigo, p.Descripcion, p.Tventa, p.Pcosto, p.Pventa, p.Dept, p.Provid, p.Umedida, p.Mayoreo, p.Iprioridad, p.Dinventario, p.Dinvminimo, p.Dinvmaximo, p.PorcentajeGanancia, p.Componentes, p.Impuestos)
+	tx, err := db.Begin()
+	if err != nil {
+		jsonErr(w, err.Error(), 500)
+		return
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec(`INSERT INTO PRODUCTOS (codigo, descripcion, tventa, pcosto, pventa, dept, provid, umedida, mayoreo, iprioridad, dinventario, dinvminimo, dinvmaximo, porcentaje_ganancia, componentes, impuestos, imagen_local) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		p.Codigo, p.Descripcion, p.Tventa, p.Pcosto, p.Pventa, p.Dept, p.Provid, p.Umedida, p.Mayoreo, p.Iprioridad, p.Dinventario, p.Dinvminimo, p.Dinvmaximo, p.PorcentajeGanancia, p.Componentes, p.Impuestos, p.ImagenLocal)
 	if err != nil {
 		jsonErr(w, err.Error(), 400)
 		return
 	}
+
+	if p.Marca != "" || p.Categorias != "" || p.Ingredientes != "" || p.Nutriscore != "" || p.CantidadPresentacion != "" || p.Nutricion != "" || p.OffImageUrl != "" || p.OffImageSmall != "" || p.OffImageGrande != "" {
+		_, err = tx.Exec(`INSERT INTO productos_openfoods (codigo, nombre, marca, categorias, ingredientes, nutricion, nutriscore, cantidad_presentacion, imagen_url, imagen_small, imagen_grande, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,datetime('now'))`,
+			p.Codigo, p.Descripcion, p.Marca, p.Categorias, p.Ingredientes, p.Nutricion, p.Nutriscore, p.CantidadPresentacion, p.OffImageUrl, p.OffImageSmall, p.OffImageGrande)
+		if err != nil {
+			jsonErr(w, err.Error(), 400)
+			return
+		}
+	}
+
+	tx.Commit()
 	jsonResp(w, map[string]string{"ok": "Producto creado"})
 }
 
 func handleProductosGet(w http.ResponseWriter, r *http.Request) {
 	codigo := r.PathValue("codigo")
 	var p Producto
-	err := db.QueryRow(`SELECT codigo, descripcion, tventa, COALESCE(pcosto,0), COALESCE(pventa,0), dept, provid, umedida, COALESCE(mayoreo,0), iprioridad, COALESCE(dinventario,0), COALESCE(dinvminimo,0), COALESCE(dinvmaximo,0), COALESCE(checado_en,''), COALESCE(porcentaje_ganancia,0), COALESCE(componentes,''), COALESCE(impuestos,'') FROM PRODUCTOS WHERE codigo=?`, codigo).Scan(&p.Codigo, &p.Descripcion, &p.Tventa, &p.Pcosto, &p.Pventa, &p.Dept, &p.Provid, &p.Umedida, &p.Mayoreo, &p.Iprioridad, &p.Dinventario, &p.Dinvminimo, &p.Dinvmaximo, &p.ChecadoEn, &p.PorcentajeGanancia, &p.Componentes, &p.Impuestos)
+	err := db.QueryRow(`
+		SELECT 
+			p.codigo, p.descripcion, p.tventa, COALESCE(p.pcosto,0), COALESCE(p.pventa,0), 
+			p.dept, p.provid, p.umedida, COALESCE(p.mayoreo,0), p.iprioridad, 
+			COALESCE(p.dinventario,0), COALESCE(p.dinvminimo,0), COALESCE(p.dinvmaximo,0), 
+			COALESCE(p.checado_en,''), COALESCE(p.porcentaje_ganancia,0), COALESCE(p.componentes,''), COALESCE(p.impuestos,''),
+			COALESCE(p.imagen_local,''),
+			COALESCE(o.nombre,''), COALESCE(o.marca,''), COALESCE(o.categorias,''), COALESCE(o.ingredientes,''),
+			COALESCE(o.nutriscore,''), COALESCE(o.cantidad_presentacion,''), COALESCE(o.nutricion,''),
+			COALESCE(o.imagen_url,''), COALESCE(o.imagen_small,''), COALESCE(o.imagen_grande,''), COALESCE(o.nombre,'')
+		FROM PRODUCTOS p
+		LEFT JOIN productos_openfoods o ON p.codigo = o.codigo
+		WHERE p.codigo=?`, codigo).Scan(&p.Codigo, &p.Descripcion, &p.Tventa, &p.Pcosto, &p.Pventa, &p.Dept, &p.Provid, &p.Umedida, &p.Mayoreo, &p.Iprioridad, &p.Dinventario, &p.Dinvminimo, &p.Dinvmaximo, &p.ChecadoEn, &p.PorcentajeGanancia, &p.Componentes, &p.Impuestos, &p.ImagenLocal, &p.Marca, &p.Categorias, &p.Ingredientes, &p.Nutriscore, &p.CantidadPresentacion, &p.Nutricion, &p.OffImageUrl, &p.OffImageSmall, &p.OffImageGrande, &p.OffName)
 	if err == sql.ErrNoRows {
 		jsonErr(w, "Producto no encontrado", 404)
 		return
@@ -74,12 +106,31 @@ func handleProductosUpdate(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, "JSON invalido", 400)
 		return
 	}
-	_, err := db.Exec(`UPDATE PRODUCTOS SET descripcion=?, tventa=?, pcosto=?, pventa=?, dept=?, provid=?, umedida=?, mayoreo=?, iprioridad=?, dinventario=?, dinvminimo=?, dinvmaximo=?, checado_en=?, porcentaje_ganancia=?, componentes=?, impuestos=? WHERE codigo=?`,
-		p.Descripcion, p.Tventa, p.Pcosto, p.Pventa, p.Dept, p.Provid, p.Umedida, p.Mayoreo, p.Iprioridad, p.Dinventario, p.Dinvminimo, p.Dinvmaximo, p.ChecadoEn, p.PorcentajeGanancia, p.Componentes, p.Impuestos, codigo)
+	tx, err := db.Begin()
+	if err != nil {
+		jsonErr(w, err.Error(), 500)
+		return
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec(`UPDATE PRODUCTOS SET descripcion=?, tventa=?, pcosto=?, pventa=?, dept=?, provid=?, umedida=?, mayoreo=?, iprioridad=?, dinventario=?, dinvminimo=?, dinvmaximo=?, checado_en=?, porcentaje_ganancia=?, componentes=?, impuestos=?, imagen_local=? WHERE codigo=?`,
+		p.Descripcion, p.Tventa, p.Pcosto, p.Pventa, p.Dept, p.Provid, p.Umedida, p.Mayoreo, p.Iprioridad, p.Dinventario, p.Dinvminimo, p.Dinvmaximo, p.ChecadoEn, p.PorcentajeGanancia, p.Componentes, p.Impuestos, p.ImagenLocal, codigo)
 	if err != nil {
 		jsonErr(w, err.Error(), 400)
 		return
 	}
+
+	// Sync openfoods data if provided
+	if p.Marca != "" || p.Categorias != "" || p.Ingredientes != "" || p.Nutriscore != "" || p.CantidadPresentacion != "" || p.Nutricion != "" || p.OffImageUrl != "" || p.OffImageSmall != "" || p.OffImageGrande != "" {
+		_, err = tx.Exec(`INSERT OR REPLACE INTO productos_openfoods (codigo, nombre, marca, categorias, ingredientes, nutricion, nutriscore, cantidad_presentacion, imagen_url, imagen_small, imagen_grande, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,datetime('now'))`,
+			codigo, p.Descripcion, p.Marca, p.Categorias, p.Ingredientes, p.Nutricion, p.Nutriscore, p.CantidadPresentacion, p.OffImageUrl, p.OffImageSmall, p.OffImageGrande)
+		if err != nil {
+			jsonErr(w, err.Error(), 400)
+			return
+		}
+	}
+
+	tx.Commit()
 	jsonResp(w, map[string]string{"ok": "Producto actualizado"})
 }
 
@@ -87,6 +138,53 @@ func handleProductosDelete(w http.ResponseWriter, r *http.Request) {
 	codigo := r.PathValue("codigo")
 	db.Exec("DELETE FROM PRODUCTOS WHERE codigo=?", codigo)
 	jsonResp(w, map[string]string{"ok": "Producto eliminado"})
+}
+
+func handleProductoUploadImagen(w http.ResponseWriter, r *http.Request) {
+	codigo := r.PathValue("codigo")
+
+	r.ParseMultipartForm(10 << 20) // 10MB max
+	file, header, err := r.FormFile("imagen")
+	if err != nil {
+		jsonErr(w, "Imagen requerida", 400)
+		return
+	}
+	defer file.Close()
+
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	if ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".webp" {
+		jsonErr(w, "Formato no soportado (jpg, png, webp)", 400)
+		return
+	}
+
+	nombre := codigo + ext
+	ruta := filepath.Join("static", "img", "productos", nombre)
+
+	if err := os.MkdirAll(filepath.Dir(ruta), 0755); err != nil {
+		jsonErr(w, "Error creando directorio", 500)
+		return
+	}
+
+	dst, err := os.Create(ruta)
+	if err != nil {
+		jsonErr(w, "Error guardando imagen", 500)
+		return
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, file); err != nil {
+		jsonErr(w, "Error escribiendo imagen", 500)
+		return
+	}
+
+	url := "/static/img/productos/" + nombre
+	_, err = db.Exec("UPDATE PRODUCTOS SET imagen_local=? WHERE codigo=?", url, codigo)
+	if err != nil {
+		jsonErr(w, "Error actualizando BD", 500)
+		return
+	}
+
+	jsonResp(w, map[string]string{"ok": "Imagen subida", "url": url})
 }
 
 // --- Clientes ---
@@ -109,7 +207,7 @@ func handleClientesList(w http.ResponseWriter, r *http.Request) {
 
 func handleClientesSearch(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
-	rows, err := db.Query(`SELECT numero, COALESCE(nombre,''), COALESCE(direccion,''), COALESCE(telefono,''), COALESCE(dsaldoactual,0), COALESCE(dtactualizasaldo,''), COALESCE(limite_credito,0), COALESCE(ultimo_pago_en,''), COALESCE(folio,0) FROM CLIENTES WHERE nombre LIKE ? OR CAST(numero AS TEXT) LIKE ?`, "%"+q+"%", "%"+q+"%")
+	rows, err := db.Query(`SELECT numero, COALESCE(nombre,''), COALESCE(direccion,''), COALESCE(telefono,''), COALESCE(dsaldoactual,0), COALESCE(dtactualizasaldo,''), COALESCE(limite_credito,0), COALESCE(ultimo_pago_en,''), COALESCE(folio,0) FROM CLIENTES WHERE nombre LIKE ? OR direccion LIKE ? OR CAST(numero AS TEXT) LIKE ?`, "%"+q+"%", "%"+q+"%", "%"+q+"%")
 	if err != nil {
 		jsonErr(w, err.Error(), 500)
 		return
@@ -244,7 +342,7 @@ func handleProveedoresUpdate(w http.ResponseWriter, r *http.Request) {
 // --- Departamentos ---
 
 func handleDepartamentosList(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Query("SELECT id, COALESCE(nombre,''), COALESCE(porcentaje_impuesto,0), COALESCE(activo,'t') FROM DEPARTAMENTOS ORDER BY nombre")
+	rows, err := db.Query("SELECT id, COALESCE(nombre,''), COALESCE(porcentaje_impuesto,0), COALESCE(activo,'t'), COALESCE(orden,999) FROM DEPARTAMENTOS ORDER BY orden, nombre")
 	if err != nil {
 		jsonErr(w, err.Error(), 500)
 		return
@@ -253,7 +351,7 @@ func handleDepartamentosList(w http.ResponseWriter, r *http.Request) {
 	ds := make([]Departamento, 0)
 	for rows.Next() {
 		var d Departamento
-		rows.Scan(&d.ID, &d.Nombre, &d.PorcentajeImpuesto, &d.Activo)
+		rows.Scan(&d.ID, &d.Nombre, &d.PorcentajeImpuesto, &d.Activo, &d.Orden)
 		ds = append(ds, d)
 	}
 	if ds == nil {

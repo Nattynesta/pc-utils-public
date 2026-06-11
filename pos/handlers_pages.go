@@ -138,4 +138,8 @@ func handleUsuariosPage(w http.ResponseWriter, r *http.Request) {
 	render(w, r, "usuarios/list.html", PageData{Title: "Usuarios", Active: "usuarios", OperacionActiva: getOperacionActiva()})
 }
 
+func handleDepartamentosPage(w http.ResponseWriter, r *http.Request) {
+	render(w, r, "departamentos/list.html", PageData{Title: "Departamentos", Active: "departamentos", OperacionActiva: getOperacionActiva()})
+}
+
 

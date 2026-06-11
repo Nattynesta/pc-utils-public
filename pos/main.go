@@ -85,6 +85,7 @@ func main() {
 	mux.HandleFunc("GET /api/productos/{codigo}", handleProductosGet)
 	mux.HandleFunc("PUT /api/productos/{codigo}", handleProductosUpdate)
 	mux.HandleFunc("DELETE /api/productos/{codigo}", handleProductosDelete)
+	mux.HandleFunc("POST /api/productos/{codigo}/imagen", handleProductoUploadImagen)
 
 	mux.HandleFunc("GET /api/clientes", handleClientesList)
 	mux.HandleFunc("POST /api/clientes", handleClientesCreate)
@@ -171,6 +172,7 @@ func main() {
 	mux.HandleFunc("GET /reportes", withAdmin(handleReportesPage))
 	mux.HandleFunc("GET /proveedores", withAdmin(handleProveedoresPage))
 	mux.HandleFunc("GET /usuarios", withAdmin(handleUsuariosPage))
+	mux.HandleFunc("GET /departamentos", withAdmin(handleDepartamentosPage))
 
 	port := os.Getenv("PORT")
 	if port == "" {
