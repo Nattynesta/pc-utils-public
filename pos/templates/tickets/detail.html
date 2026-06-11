@@ -1,42 +1,108 @@
 {{template "base.html" .}}
 {{define "content"}}
-<div class="card" style="max-width:700px">
+<div class="card" style="max-width:800px">
     <div class="flex-between mb-1">
         <h2>Ticket #<span id="td-folio"></span></h2>
-        <div><span class="btn btn-sm" id="td-estado"></span></div>
+        <div>
+            <span class="btn btn-sm" id="td-estado"></span>
+            <span class="btn btn-sm text-muted" id="td-prioridad"></span>
+        </div>
     </div>
-    <div class="text-muted mb-1" id="td-fecha"></div>
+    <div class="grid grid-2 mb-1">
+        <div><strong>Fecha:</strong> <span id="td-fecha"></span></div>
+        <div><strong>Cliente:</strong> <span id="td-cliente"></span></div>
+        <div><strong>Local:</strong> <span id="td-local"></span></div>
+        <div><strong>Cajero:</strong> <span id="td-cajero"></span></div>
+    </div>
     <table>
         <thead><tr><th>Producto</th><th>Cant</th><th>Precio</th><th>Total</th></tr></thead>
         <tbody id="td-articulos"></tbody>
-        <tfoot><tr><td colspan="3" class="text-right"><strong>Subtotal</strong></td><td id="td-subtotal"></td></tr>
-        <tr><td colspan="3" class="text-right"><strong>Total</strong></td><td id="td-total"></td></tr>
-        <tr><td colspan="3" class="text-right"><strong>Pago con</strong></td><td id="td-pago"></td></tr>
-        <tr><td colspan="3" class="text-right"><strong>Cambio</strong></td><td id="td-cambio"></td></tr></tfoot>
+        <tfoot>
+            <tr><td colspan="3" class="text-right"><strong>Subtotal</strong></td><td id="td-subtotal"></td></tr>
+            <tr><td colspan="3" class="text-right"><strong>Impuestos</strong></td><td id="td-impuestos"></td></tr>
+            <tr><td colspan="3" class="text-right"><strong>Total</strong></td><td id="td-total"></td></tr>
+            <tr><td colspan="3" class="text-right"><strong>Pago con</strong></td><td id="td-pago"></td></tr>
+            <tr><td colspan="3" class="text-right"><strong>Cambio</strong></td><td id="td-cambio"></td></tr>
+            <tr><td colspan="3" class="text-right"><strong>Adeudo</strong></td><td id="td-adeudo" class="text-danger"></td></tr>
+        </tfoot>
     </table>
-    <div class="flex mt-1">
+    <div class="flex mt-1 flex-wrap gap-1">
         <a href="/tickets" class="btn btn-outline"><i class="fas fa-arrow-left"></i> Volver</a>
+        <button class="btn btn-warning" id="btn-cobrar" onclick="cobrarTicket()" style="display:none"><i class="fas fa-money-bill-wave"></i> Cobrar</button>
+        <button class="btn btn-danger" id="btn-borrar" onclick="borrarTicket()" style="display:none"><i class="fas fa-trash"></i> Borrar</button>
     </div>
 </div>
 <script>
 var ticketId = '{{.Data}}';
+var userRole = '{{.Role}}';
 fetch('/api/tickets/'+ticketId).then(r=>r.json()).then(function(t){
     document.getElementById('td-folio').textContent = t.folio || t.id;
     document.getElementById('td-fecha').textContent = t.creado_en;
+    document.getElementById('td-cliente').textContent = t.cliente_nombre || '-';
+    document.getElementById('td-local').textContent = t.cliente_direccion || '-';
+    document.getElementById('td-cajero').textContent = t.cajero_id || '-';
     var estado = document.getElementById('td-estado');
     if(t.esta_cancelado==='t'){ estado.textContent='Cancelado'; estado.className='btn btn-sm btn-danger'; }
     else if(t.esta_abierto==='t'){ estado.textContent='Abierto'; estado.className='btn btn-sm btn-warning'; }
     else { estado.textContent='Pagado'; estado.className='btn btn-sm btn-success'; }
+    var prio = document.getElementById('td-prioridad');
+    if(t.prioridad > 0){
+        prio.textContent = 'Prioridad: '+t.prioridad;
+        prio.className = 'btn btn-sm ' + (t.prioridad >= 3 ? 'btn-danger' : (t.prioridad >= 2 ? 'btn-warning' : 'btn-outline'));
+    } else {
+        prio.style.display = 'none';
+    }
     document.getElementById('td-subtotal').textContent = '$'+t.subtotal.toFixed(2);
+    document.getElementById('td-impuestos').textContent = '$'+t.impuestos.toFixed(2);
     document.getElementById('td-total').textContent = '$'+t.total.toFixed(2);
     document.getElementById('td-pago').textContent = '$'+(t.pago_con||0).toFixed(2);
     document.getElementById('td-cambio').textContent = '$'+(t.total_devuelto||0).toFixed(2);
+    var adeudo = t.total - (t.pago_con||0);
+    document.getElementById('td-adeudo').textContent = '$'+adeudo.toFixed(2);
     var tbody = document.getElementById('td-articulos');
     if(t.articulos && t.articulos.length){
         tbody.innerHTML = t.articulos.map(function(a){
             return '<tr><td>'+a.producto_nombre+'</td><td>'+a.cantidad+'</td><td>$'+a.precio_usado.toFixed(2)+'</td><td>$'+(a.cantidad*a.precio_usado).toFixed(2)+'</td></tr>';
         }).join('');
     }
+    // Mostrar botones según rol y estado
+    var btnCobrar = document.getElementById('btn-cobrar');
+    var btnBorrar = document.getElementById('btn-borrar');
+    if(t.esta_abierto==='t' && t.esta_cancelado==='f'){
+        if(userRole === 'helper' || userRole === 'admin'){
+            btnCobrar.style.display = 'inline-flex';
+        }
+    }
+    if(userRole === 'admin'){
+        btnBorrar.style.display = 'inline-flex';
+    }
 });
+
+function cobrarTicket(){
+    if(!confirm('Marcar este ticket como pagado?')) return;
+    fetch('/api/tickets/'+ticketId+'/cobrar', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({pago_con: parseFloat(document.getElementById('td-total').textContent.replace('$','')), forma_pago:'e'})
+    }).then(r=>r.json()).then(function(res){
+        if(res.ok){
+            location.reload();
+        } else {
+            alert('Error: ' + (res.error || 'desconocido'));
+        }
+    });
+}
+
+function borrarTicket(){
+    if(!confirm('BORRAR PERMANENTEMENTE este ticket y sus artículos? Esta acción no se puede deshacer.')) return;
+    fetch('/api/tickets/'+ticketId, {method:'DELETE'})
+    .then(r=>r.json()).then(function(res){
+        if(res.ok){
+            window.location = '/tickets';
+        } else {
+            alert('Error: ' + (res.error || 'desconocido'));
+        }
+    });
+}
 </script>
 {{end}}

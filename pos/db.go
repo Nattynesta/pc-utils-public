@@ -119,6 +119,7 @@ type VentaTicket struct {
 	CajaID         int      `json:"caja_id"`
 	CajeroID       int      `json:"cajero_id"`
 	Nombre         string   `json:"nombre"`
+	Prioridad      int      `json:"prioridad"`
 	CreadoEn       string   `json:"creado_en"`
 	Subtotal       float64  `json:"subtotal"`
 	Impuestos      float64  `json:"impuestos"`
@@ -211,9 +212,16 @@ func listProductos() ([]Producto, error) {
 			COALESCE(p.dinventario,0), COALESCE(p.dinvminimo,0), COALESCE(p.dinvmaximo,0), 
 			COALESCE(p.checado_en,''), COALESCE(p.porcentaje_ganancia,0), COALESCE(p.componentes,''), COALESCE(p.impuestos,''),
 			COALESCE(p.imagen_local,''),
-			COALESCE(o.nombre,''), COALESCE(o.marca,''), COALESCE(o.categorias,''), COALESCE(o.ingredientes,''),
-			COALESCE(o.nutriscore,''), COALESCE(o.cantidad_presentacion,''), COALESCE(o.nutricion,''),
-			COALESCE(o.imagen_url,''), COALESCE(o.imagen_small,''), COALESCE(o.imagen_grande,''), COALESCE(o.nombre,'')
+			COALESCE(p.marca, o.marca),
+			COALESCE(p.categorias, o.categorias),
+			COALESCE(p.ingredientes, o.ingredientes),
+			COALESCE(p.nutriscore, o.nutriscore),
+			COALESCE(p.cantidad_presentacion, o.cantidad_presentacion),
+			COALESCE(p.nutricion, o.nutricion),
+			COALESCE(p.off_image_url, o.imagen_url),
+			COALESCE(p.off_image_small, o.imagen_small),
+			COALESCE(o.imagen_grande, ''),
+			COALESCE(o.nombre, '')
 		FROM PRODUCTOS p
 		LEFT JOIN productos_openfoods o ON p.codigo = o.codigo
 		ORDER BY p.descripcion`)

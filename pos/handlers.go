@@ -82,9 +82,16 @@ func handleProductosGet(w http.ResponseWriter, r *http.Request) {
 			COALESCE(p.dinventario,0), COALESCE(p.dinvminimo,0), COALESCE(p.dinvmaximo,0), 
 			COALESCE(p.checado_en,''), COALESCE(p.porcentaje_ganancia,0), COALESCE(p.componentes,''), COALESCE(p.impuestos,''),
 			COALESCE(p.imagen_local,''),
-			COALESCE(o.nombre,''), COALESCE(o.marca,''), COALESCE(o.categorias,''), COALESCE(o.ingredientes,''),
-			COALESCE(o.nutriscore,''), COALESCE(o.cantidad_presentacion,''), COALESCE(o.nutricion,''),
-			COALESCE(o.imagen_url,''), COALESCE(o.imagen_small,''), COALESCE(o.imagen_grande,''), COALESCE(o.nombre,'')
+			COALESCE(p.marca, o.marca),
+			COALESCE(p.categorias, o.categorias),
+			COALESCE(p.ingredientes, o.ingredientes),
+			COALESCE(p.nutriscore, o.nutriscore),
+			COALESCE(p.cantidad_presentacion, o.cantidad_presentacion),
+			COALESCE(p.nutricion, o.nutricion),
+			COALESCE(p.off_image_url, o.imagen_url),
+			COALESCE(p.off_image_small, o.imagen_small),
+			COALESCE(o.imagen_grande, ''),
+			COALESCE(o.nombre, '')
 		FROM PRODUCTOS p
 		LEFT JOIN productos_openfoods o ON p.codigo = o.codigo
 		WHERE p.codigo=?`, codigo).Scan(&p.Codigo, &p.Descripcion, &p.Tventa, &p.Pcosto, &p.Pventa, &p.Dept, &p.Provid, &p.Umedida, &p.Mayoreo, &p.Iprioridad, &p.Dinventario, &p.Dinvminimo, &p.Dinvmaximo, &p.ChecadoEn, &p.PorcentajeGanancia, &p.Componentes, &p.Impuestos, &p.ImagenLocal, &p.Marca, &p.Categorias, &p.Ingredientes, &p.Nutriscore, &p.CantidadPresentacion, &p.Nutricion, &p.OffImageUrl, &p.OffImageSmall, &p.OffImageGrande, &p.OffName)
@@ -617,7 +624,42 @@ func handleTicketsList(w http.ResponseWriter, r *http.Request) {
 	}
 	limit := 50
 	offset := (page - 1) * limit
-	rows, err := db.Query(`SELECT t.id, t.folio, t.caja_id, t.cajero_id, COALESCE(t.nombre,''), t.creado_en, COALESCE(t.subtotal,0), COALESCE(t.impuestos,0), COALESCE(t.total,0), COALESCE(t.ganancia,0), t.esta_abierto, t.cliente_id, t.vendido_en, t.es_modificable, COALESCE(t.pago_con,0), COALESCE(t.moneda,''), COALESCE(t.numero_articulos,0), t.pagado_en, t.esta_cancelado, t.operacion_id, COALESCE(t.forma_pago,''), COALESCE(t.referencia,''), COALESCE(t.total_devuelto,0) FROM VENTATICKETS t ORDER BY t.creado_en DESC LIMIT ? OFFSET ?`, limit, offset)
+
+	q := r.URL.Query().Get("q")
+	estado := r.URL.Query().Get("estado")
+	prioridad := r.URL.Query().Get("prioridad")
+	soloAdeudos := r.URL.Query().Get("solo_adeudos")
+
+	where := []string{"1=1"}
+	args := []interface{}{}
+
+	if q != "" {
+		where = append(where, `(t.folio LIKE ? OR COALESCE(c.nombre,'') LIKE ? OR COALESCE(c.direccion,'') LIKE ?)`)
+		args = append(args, "%"+q+"%", "%"+q+"%", "%"+q+"%")
+	}
+	if estado != "" {
+		switch estado {
+		case "abierto":
+			where = append(where, "t.esta_abierto='t' AND t.esta_cancelado='f'")
+		case "pagado":
+			where = append(where, "t.esta_abierto='f' AND t.esta_cancelado='f'")
+		case "cancelado":
+			where = append(where, "t.esta_cancelado='t'")
+		case "credito":
+			where = append(where, "t.forma_pago='c' AND t.esta_abierto='f' AND t.esta_cancelado='f'")
+		}
+	}
+	if prioridad != "" {
+		where = append(where, "t.prioridad=?")
+		args = append(args, prioridad)
+	}
+	if soloAdeudos == "1" {
+		where = append(where, "(t.forma_pago='c' AND t.esta_abierto='f' AND t.esta_cancelado='f')")
+	}
+
+	whereClause := strings.Join(where, " AND ")
+
+	rows, err := db.Query(`SELECT t.id, t.folio, t.caja_id, t.cajero_id, COALESCE(t.nombre,''), t.prioridad, t.creado_en, COALESCE(t.subtotal,0), COALESCE(t.impuestos,0), COALESCE(t.total,0), COALESCE(t.ganancia,0), t.esta_abierto, t.cliente_id, t.vendido_en, t.es_modificable, COALESCE(t.pago_con,0), COALESCE(t.moneda,''), COALESCE(t.numero_articulos,0), t.pagado_en, t.esta_cancelado, t.operacion_id, COALESCE(t.forma_pago,''), COALESCE(t.referencia,''), COALESCE(t.total_devuelto,0), COALESCE(c.nombre,''), COALESCE(c.direccion,'') FROM VENTATICKETS t LEFT JOIN CLIENTES c ON t.cliente_id=c.numero WHERE `+whereClause+` ORDER BY t.creado_en DESC LIMIT ? OFFSET ?`, append(args, limit, offset)...)
 	if err != nil {
 		jsonErr(w, err.Error(), 500)
 		return
@@ -626,7 +668,8 @@ func handleTicketsList(w http.ResponseWriter, r *http.Request) {
 	ts := make([]VentaTicket, 0)
 	for rows.Next() {
 		var t VentaTicket
-		rows.Scan(&t.ID, &t.Folio, &t.CajaID, &t.CajeroID, &t.Nombre, &t.CreadoEn, &t.Subtotal, &t.Impuestos, &t.Total, &t.Ganancia, &t.EstaAbierto, &t.ClienteID, &t.VendidoEn, &t.EsModificable, &t.PagoCon, &t.Moneda, &t.NumeroArticulos, &t.PagadoEn, &t.EstaCancelado, &t.OperacionID, &t.FormaPago, &t.Referencia, &t.TotalDevuelto)
+		var clienteNombre, clienteDireccion string
+		rows.Scan(&t.ID, &t.Folio, &t.CajaID, &t.CajeroID, &t.Nombre, &t.Prioridad, &t.CreadoEn, &t.Subtotal, &t.Impuestos, &t.Total, &t.Ganancia, &t.EstaAbierto, &t.ClienteID, &t.VendidoEn, &t.EsModificable, &t.PagoCon, &t.Moneda, &t.NumeroArticulos, &t.PagadoEn, &t.EstaCancelado, &t.OperacionID, &t.FormaPago, &t.Referencia, &t.TotalDevuelto, &clienteNombre, &clienteDireccion)
 		ts = append(ts, t)
 	}
 	if ts == nil {
@@ -640,6 +683,7 @@ func handleTicketCrear(w http.ResponseWriter, r *http.Request) {
 		CajaID    int `json:"caja_id"`
 		CajeroID  int `json:"cajero_id"`
 		ClienteID *int `json:"cliente_id"`
+		Prioridad int `json:"prioridad"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonErr(w, "JSON invalido", 400)
@@ -662,7 +706,7 @@ func handleTicketCrear(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := tx.Exec(`INSERT INTO VENTATICKETS (folio, caja_id, cajero_id, creado_en, esta_abierto, operacion_id, es_modificable, nombre) VALUES (?,?,?,?,'t',?,'t','PV')`, folio, req.CajaID, req.CajeroID, now(), operacionID)
+	res, err := tx.Exec(`INSERT INTO VENTATICKETS (folio, caja_id, cajero_id, prioridad, cliente_id, creado_en, esta_abierto, operacion_id, es_modificable, nombre) VALUES (?,?,?,?,?,?,'t',?,'t','PV')`, folio, req.CajaID, req.CajeroID, req.Prioridad, req.ClienteID, now(), operacionID)
 	if err != nil {
 		jsonErr(w, err.Error(), 400)
 		return
@@ -676,7 +720,8 @@ func handleTicketCrear(w http.ResponseWriter, r *http.Request) {
 func handleTicketGet(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var t VentaTicket
-	err := db.QueryRow(`SELECT id, folio, caja_id, cajero_id, COALESCE(nombre,''), creado_en, COALESCE(subtotal,0), COALESCE(impuestos,0), COALESCE(total,0), COALESCE(ganancia,0), esta_abierto, cliente_id, COALESCE(vendido_en,''), es_modificable, COALESCE(pago_con,0), COALESCE(moneda,''), COALESCE(numero_articulos,0), COALESCE(pagado_en,''), esta_cancelado, operacion_id, COALESCE(forma_pago,''), COALESCE(referencia,''), COALESCE(total_devuelto,0) FROM VENTATICKETS WHERE id=?`, id).Scan(&t.ID, &t.Folio, &t.CajaID, &t.CajeroID, &t.Nombre, &t.CreadoEn, &t.Subtotal, &t.Impuestos, &t.Total, &t.Ganancia, &t.EstaAbierto, &t.ClienteID, &t.VendidoEn, &t.EsModificable, &t.PagoCon, &t.Moneda, &t.NumeroArticulos, &t.PagadoEn, &t.EstaCancelado, &t.OperacionID, &t.FormaPago, &t.Referencia, &t.TotalDevuelto)
+	var clienteNombre, clienteDireccion string
+	err := db.QueryRow(`SELECT t.id, t.folio, t.caja_id, t.cajero_id, COALESCE(t.nombre,''), t.prioridad, t.creado_en, COALESCE(t.subtotal,0), COALESCE(t.impuestos,0), COALESCE(t.total,0), COALESCE(t.ganancia,0), t.esta_abierto, t.cliente_id, COALESCE(t.vendido_en,''), t.es_modificable, COALESCE(t.pago_con,0), COALESCE(t.moneda,''), COALESCE(t.numero_articulos,0), COALESCE(t.pagado_en,''), t.esta_cancelado, t.operacion_id, COALESCE(t.forma_pago,''), COALESCE(t.referencia,''), COALESCE(t.total_devuelto,0), COALESCE(c.nombre,''), COALESCE(c.direccion,'') FROM VENTATICKETS t LEFT JOIN CLIENTES c ON t.cliente_id=c.numero WHERE t.id=?`, id).Scan(&t.ID, &t.Folio, &t.CajaID, &t.CajeroID, &t.Nombre, &t.Prioridad, &t.CreadoEn, &t.Subtotal, &t.Impuestos, &t.Total, &t.Ganancia, &t.EstaAbierto, &t.ClienteID, &t.VendidoEn, &t.EsModificable, &t.PagoCon, &t.Moneda, &t.NumeroArticulos, &t.PagadoEn, &t.EstaCancelado, &t.OperacionID, &t.FormaPago, &t.Referencia, &t.TotalDevuelto, &clienteNombre, &clienteDireccion)
 	if err == sql.ErrNoRows {
 		jsonErr(w, "Ticket no encontrado", 404)
 		return
@@ -810,6 +855,50 @@ func handleTicketCancelar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonResp(w, map[string]string{"ok": "Ticket cancelado"})
+}
+
+func handleTicketActualizarPrioridad(w http.ResponseWriter, r *http.Request) {
+	if !isHelperOrAdmin(r) {
+		jsonErr(w, "No autorizado", 401)
+		return
+	}
+	id := r.PathValue("id")
+	var req struct {
+		Prioridad int `json:"prioridad"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonErr(w, "JSON invalido", 400)
+		return
+	}
+	_, err := db.Exec(`UPDATE VENTATICKETS SET prioridad=? WHERE id=? AND esta_abierto='t'`, req.Prioridad, id)
+	if err != nil {
+		jsonErr(w, err.Error(), 400)
+		return
+	}
+	jsonResp(w, map[string]string{"ok": "Prioridad actualizada"})
+}
+
+func handleTicketDelete(w http.ResponseWriter, r *http.Request) {
+	if !isAdmin(r) {
+		jsonErr(w, "Solo admin puede borrar tickets", 403)
+		return
+	}
+	id := r.PathValue("id")
+	tx, err := db.Begin()
+	if err != nil {
+		jsonErr(w, err.Error(), 500)
+		return
+	}
+	defer tx.Rollback()
+	tx.Exec("DELETE FROM VENTATICKETS_ARTICULOS WHERE ticket_id=?", id)
+	tx.Exec("DELETE FROM VENTAS WHERE ticket_id=?", id)
+	_, err = tx.Exec("DELETE FROM VENTATICKETS WHERE id=?", id)
+	if err != nil {
+		jsonErr(w, err.Error(), 400)
+		return
+	}
+	tx.Commit()
+	jsonResp(w, map[string]string{"ok": "Ticket eliminado"})
 }
 
 // --- Movimientos ---

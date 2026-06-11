@@ -87,10 +87,19 @@
         <span class="label">Total</span>
         <span class="total" id="cart-total">$0.00</span>
       </div>
-      <div class="cart-pago">
-        <select id="formaPago">
-          <option value="e">Efectivo</option>
-        </select>
+      <div class="cart-pago" style="flex-direction:column; gap:.4rem;">
+        <div style="display:flex; gap:.4rem;">
+          <select id="formaPago">
+            <option value="e">Efectivo</option>
+          </select>
+          <select id="prioridad" style="width:auto;">
+            <option value="0">Prioridad: Normal</option>
+            <option value="1">Baja</option>
+            <option value="2">Normal</option>
+            <option value="3">Alta</option>
+            <option value="4">Urgente</option>
+          </select>
+        </div>
         <input type="number" id="pagoCon" step="0.01" min="0" placeholder="$ recibido">
       </div>
       <button class="btn btn-success btn-block" style="font-size:1rem;padding:.7rem" onclick="cobrar()">Cobrar</button>
@@ -382,7 +391,7 @@ function aplicarFiltros(){
 
 function iniciarVenta(){
   var uid = parseInt(document.cookie.split('; ').find(function(c){return c.startsWith('user_id=');})?.split('=')[1]) || 2;
-  var body = {caja_id:1, cajero_id:uid};
+  var body = {caja_id:1, cajero_id:uid, prioridad: parseInt(document.getElementById('prioridad').value) || 0};
   if(selectedCliente) body.cliente_id = selectedCliente.numero;
   return fetch('/api/tickets', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)})
   .then(function(r){ return r.json(); }).then(function(t){ currentTicket = t.id; articulos=[]; actualizarCarrito(); return t; })

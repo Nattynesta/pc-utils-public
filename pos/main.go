@@ -126,6 +126,8 @@ func main() {
 	mux.HandleFunc("DELETE /api/tickets/{id}/articulo/{artId}", handleTicketRemoveArticulo)
 	mux.HandleFunc("POST /api/tickets/{id}/cobrar", handleTicketCobrar)
 	mux.HandleFunc("POST /api/tickets/{id}/cancelar", handleTicketCancelar)
+	mux.HandleFunc("PUT /api/tickets/{id}/prioridad", handleTicketActualizarPrioridad)
+	mux.HandleFunc("DELETE /api/tickets/{id}", handleTicketDelete)
 
 	mux.HandleFunc("GET /api/movimientos", handleMovimientosList)
 	mux.HandleFunc("POST /api/movimientos", handleMovimientoCrear)
@@ -179,7 +181,7 @@ func main() {
 		port = "8080"
 	}
 
-	addr := fmt.Sprintf(":%s", port)
+	addr := fmt.Sprintf("0.0.0.0:%s", port)
 	log.Printf("Abarrotes PDV corriendo en http://localhost%s", addr)
 	log.Fatal(http.ListenAndServe(addr, withCORS(withAuth(mux))))
 }
@@ -223,6 +225,12 @@ func migrate(db *sql.DB) error {
 		db.Exec(`CREATE TABLE PRODUCTOS_OFF (codigo TEXT PRIMARY KEY, image_url TEXT, image_small TEXT, name TEXT, last_sync TEXT)`)
 	}
 
+	var hasPrioridad int
+	db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('VENTATICKETS') WHERE name='prioridad'").Scan(&hasPrioridad)
+	if hasPrioridad == 0 {
+		db.Exec(`ALTER TABLE VENTATICKETS ADD COLUMN prioridad INTEGER DEFAULT 0`)
+	}
+
 	return nil
 }
 
@@ -263,6 +271,19 @@ func withAdmin(next http.HandlerFunc) http.HandlerFunc {
 		}
 		next(w, r)
 	}
+}
+
+func isAdmin(r *http.Request) bool {
+	roleCookie, err := r.Cookie("role")
+	return err == nil && roleCookie.Value == "admin"
+}
+
+func isHelperOrAdmin(r *http.Request) bool {
+	roleCookie, err := r.Cookie("role")
+	if err != nil {
+		return false
+	}
+	return roleCookie.Value == "admin" || roleCookie.Value == "helper"
 }
 
 func render(w http.ResponseWriter, r *http.Request, name string, data PageData) {

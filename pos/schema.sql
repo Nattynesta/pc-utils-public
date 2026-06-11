@@ -210,6 +210,7 @@ CREATE TABLE IF NOT EXISTS VENTATICKETS (
     caja_id INTEGER NOT NULL,
     cajero_id INTEGER NOT NULL,
     nombre TEXT,
+    prioridad INTEGER DEFAULT 0,
     creado_en TEXT,
     subtotal REAL DEFAULT 0,
     impuestos REAL DEFAULT 0,
