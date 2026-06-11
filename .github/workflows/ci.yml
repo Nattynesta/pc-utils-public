@@ -1,11 +1,15 @@
-name: Build Abarrotes PDV
+name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, develop ]
     paths:
       - 'pos/**'
-      - '.github/workflows/build.yml'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    branches: [ develop ]
+    paths:
+      - 'pos/**'
   workflow_dispatch:
 
 jobs:
@@ -23,14 +27,17 @@ jobs:
           go-version: '1.22'
           cache-dependency-path: pos/go.sum
 
-      - name: Generate go.sum
+      - name: Tidy
         run: go mod tidy
 
-      - name: Build for linux/amd64
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build linux/amd64
         run: |
           GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o abarrotes-pdv .
 
-      - name: Build for windows/amd64
+      - name: Build windows/amd64
         run: |
           GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o abarrotes-pdv.exe .
 

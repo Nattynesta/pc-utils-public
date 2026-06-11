@@ -1,0 +1,34 @@
+name: "Bug Report"
+description: "Reportar un error en el POS"
+labels: ["bug"]
+body:
+  - type: textarea
+    id: desc
+    attributes:
+      label: "Descripción"
+      description: "Qué pasó y qué debería haber pasado"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: "Pasos para reproducir"
+      placeholder: |
+        1. Ir a '...'
+        2. Hacer click en '...'
+        3. Ver error
+  - type: input
+    id: version
+    attributes:
+      label: "Versión / Commit"
+      description: "git log --oneline -1"
+  - type: dropdown
+    id: browser
+    attributes:
+      label: "Navegador"
+      options:
+        - Chrome
+        - Firefox
+        - Edge
+        - Safari
+        - Otro

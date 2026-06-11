@@ -1,4 +1,8 @@
-pos/abarrotes-pdv*
-pos/.env
-*.db
-*.exe
+pos/pos_server
+pos/pos_server.exe
+pos/abarrotes-pdv
+pos/abarrotes-pdv.exe
+.DS_Store
+thumbs.db
+*.swp
+*.log
