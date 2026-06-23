@@ -1686,7 +1686,10 @@ func runWSHub() {
 			wsClientsMu.Lock()
 			if _, ok := wsClients[client]; ok {
 				delete(wsClients, client)
-				close(client.send)
+				func() {
+					defer func() { recover() }()
+					close(client.send)
+				}()
 			}
 			wsClientsMu.Unlock()
 		case message := <-wsBroadcast:
@@ -1696,7 +1699,11 @@ func runWSHub() {
 				case client.send <- message:
 				default:
 					delete(wsClients, client)
-					close(client.send)
+					// Try to close channel safely
+					func() {
+						defer func() { recover() }()
+						close(client.send)
+					}()
 				}
 			}
 			wsClientsMu.Unlock()
