@@ -3,7 +3,7 @@
 <h1>Reportes</h1>
 <div class="card">
     <h2>Resumen</h2>
-    <div id="report-summary" class="grid grid-2"></div>
+    <div id="report-summary" class="grid grid-3"></div>
 </div>
 <div class="card">
     <h2>Ventas por Dia (ultimos 30)</h2>
@@ -19,8 +19,16 @@
 fetch('/api/reportes/dashboard').then(r=>r.json()).then(function(d){
     document.getElementById('report-summary').innerHTML =
         '<div class="card stat"><div class="value">'+d.ventas_mes+'</div><div class="label">Ventas del Mes</div></div>'+
-        '<div class="card stat"><div class="value">$'+d.ingresos_mes.toFixed(2)+'</div><div class="label">Ingresos del Mes</div></div>';
+        '<div class="card stat"><div class="value">$'+d.ingresos_mes.toFixed(2)+'</div><div class="label">Ingresos del Mes</div></div>'+
+        '<div class="card stat" onclick="mostrarValorInv(this)" style="cursor:pointer"><div class="value" id="invValor">******</div><div class="label">Valor Inventario <small style="color:var(--text3)">(click)</small></div></div>';
 });
+function mostrarValorInv(el){
+  var d = document.getElementById('invValor');
+  fetch('/api/reportes/dashboard').then(function(r){return r.json();}).then(function(dd){
+    d.textContent = '$'+dd.valor_inventario.toFixed(2);
+    setTimeout(function(){ d.textContent = '******'; }, 5000);
+  });
+}
 fetch('/api/reportes/ventas-diarias').then(r=>r.json()).then(function(rs){
     var tbody = document.getElementById('report-ventas-diarias');
     tbody.innerHTML = rs.map(function(r){ return '<tr><td>'+r.dia+'</td><td>'+r.tickets+'</td><td>$'+r.total.toFixed(2)+'</td><td>$'+r.ganancia.toFixed(2)+'</td></tr>'; }).join('');

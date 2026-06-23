@@ -114,6 +114,8 @@ func main() {
 	mux.HandleFunc("POST /api/proveedores", handleProveedoresCreate)
 	mux.HandleFunc("GET /api/proveedores/{num}", handleProveedoresGet)
 	mux.HandleFunc("PUT /api/proveedores/{num}", handleProveedoresUpdate)
+	mux.HandleFunc("GET /api/proveedores/{num}/productos", handleProveedoresProductos)
+	mux.HandleFunc("POST /api/proveedores/{num}/recibir", handleProveedoresRecibir)
 
 	mux.HandleFunc("GET /api/departamentos", handleDepartamentosList)
 	mux.HandleFunc("POST /api/departamentos", handleDepartamentosCreate)
@@ -125,6 +127,7 @@ func main() {
 	mux.HandleFunc("GET /api/usuarios", handleUsuariosList)
 	mux.HandleFunc("POST /api/usuarios", handleUsuariosCreate)
 	mux.HandleFunc("PUT /api/usuarios/{id}", handleUsuariosUpdate)
+	mux.HandleFunc("PUT /api/usuarios/{id}/password", handleUsuarioPassword)
 
 	mux.HandleFunc("GET /api/cajas", handleCajasList)
 	mux.HandleFunc("GET /api/cajas/default", handleCajaDefault)
@@ -159,12 +162,23 @@ func main() {
 	mux.HandleFunc("POST /api/promociones", handlePromocionesCreate)
 	mux.HandleFunc("DELETE /api/promociones/{id}", handlePromocionesDelete)
 
+	mux.HandleFunc("GET /api/pedidos", handlePedidosList)
+	mux.HandleFunc("POST /api/pedidos", handlePedidosCreate)
+	mux.HandleFunc("PUT /api/pedidos/{id}/asignar", handlePedidosAsignar)
+	mux.HandleFunc("PUT /api/pedidos/{id}/estado", handlePedidosEstado)
+	mux.HandleFunc("GET /api/pedidos/estadisticas", handlePedidosStats)
+
 	mux.HandleFunc("GET /api/off/sync", withAdmin(handleOffSync))
 	mux.HandleFunc("POST /api/off/sync", withAdmin(handleOffSync))
 
 	mux.HandleFunc("GET /api/reportes/dashboard", handleReportesDashboard)
 	mux.HandleFunc("GET /api/reportes/ventas-diarias", handleReportesVentasDiarias)
 	mux.HandleFunc("GET /api/reportes/productos-mas-vendidos", handleReportesTopProductos)
+	mux.HandleFunc("POST /api/admin/reset-ventas", withAdmin(handleAdminResetVentas))
+	mux.HandleFunc("GET /api/chat/mensajes", handleChatMensajes)
+	mux.HandleFunc("POST /api/chat/mensajes", handleChatMensajes)
+	mux.HandleFunc("GET /api/chat/online", handleChatOnline)
+	mux.HandleFunc("GET /api/chat/ws", handleChatWS)
 
 	mux.HandleFunc("GET /", handleIndex)
 
@@ -191,11 +205,15 @@ func main() {
 	mux.HandleFunc("GET /proveedores", withAdmin(handleProveedoresPage))
 	mux.HandleFunc("GET /usuarios", withAdmin(handleUsuariosPage))
 	mux.HandleFunc("GET /departamentos", withAdmin(handleDepartamentosPage))
+	mux.HandleFunc("GET /pedidos", handlePedidosPage)
+	mux.HandleFunc("GET /chat", handleChatPage)
 
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
+
+	go runWSHub()
 
 	addr := fmt.Sprintf("0.0.0.0:%s", port)
 	log.Printf("Abarrotes PDV corriendo en http://localhost%s", addr)
@@ -256,6 +274,13 @@ func migrate(db *sql.DB) error {
 	db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('VENTATICKETS') WHERE name='prioridad'").Scan(&hasPrioridad)
 	if hasPrioridad == 0 {
 		db.Exec(`ALTER TABLE VENTATICKETS ADD COLUMN prioridad INTEGER DEFAULT 0`)
+	}
+
+	var hasPedidos int
+	db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='PEDIDOS'").Scan(&hasPedidos)
+	if hasPedidos == 0 {
+		db.Exec(`CREATE TABLE PEDIDOS (id INTEGER PRIMARY KEY AUTOINCREMENT, items TEXT NOT NULL DEFAULT '[]', total REAL NOT NULL DEFAULT 0, prioridad TEXT NOT NULL DEFAULT 'media', notas TEXT DEFAULT '', cliente_nombre TEXT DEFAULT '', cliente_direccion TEXT DEFAULT '', cliente_telefono TEXT DEFAULT '', es_adeudo INTEGER DEFAULT 0, creado_por_id INTEGER NOT NULL, asignado_a_id INTEGER, estado TEXT NOT NULL DEFAULT 'pendiente', created_on TEXT NOT NULL DEFAULT (datetime('now','localtime')), completado_on TEXT, FOREIGN KEY (creado_por_id) REFERENCES USUARIOS(id), FOREIGN KEY (asignado_a_id) REFERENCES USUARIOS(id))`)
+		db.Exec(`CREATE TABLE PEDIDOS_LOG (id INTEGER PRIMARY KEY AUTOINCREMENT, pedido_id INTEGER NOT NULL, usuario_id INTEGER NOT NULL, accion TEXT NOT NULL, created_on TEXT NOT NULL DEFAULT (datetime('now','localtime')), FOREIGN KEY (pedido_id) REFERENCES PEDIDOS(id), FOREIGN KEY (usuario_id) REFERENCES USUARIOS(id))`)
 	}
 
 	var productCount int

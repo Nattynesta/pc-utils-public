@@ -78,6 +78,7 @@ type Usuario struct {
 	Direccion      string `json:"direccion"`
 	Telefono       string `json:"telefono"`
 	Usuario        string `json:"usuario"`
+	Clave          string `json:"clave,omitempty"`
 	Rol            string `json:"rol"`
 	Activo         string `json:"activo"`
 	CreatedOn      string `json:"created_on"`
@@ -140,6 +141,7 @@ type VentaTicket struct {
 	TotalDevuelto  float64  `json:"total_devuelto"`
 	ClienteNombre  string   `json:"cliente_nombre"`
 	ClienteDireccion string `json:"cliente_direccion"`
+	CajeroNombre   string   `json:"cajero_nombre"`
 	Articulos      []TicketArticulo `json:"articulos,omitempty"`
 }
 
@@ -185,6 +187,25 @@ type DashboardReport struct {
 	ValorInventario float64 `json:"valor_inventario"`
 	OperacionActiva bool    `json:"operacion_activa"`
 	TicketsAbiertos int     `json:"tickets_abiertos"`
+}
+
+type Pedido struct {
+	ID               int     `json:"id"`
+	Items            string  `json:"items"`
+	Total            float64 `json:"total"`
+	Prioridad        string  `json:"prioridad"`
+	Notas            string  `json:"notas"`
+	ClienteNombre    string  `json:"cliente_nombre"`
+	ClienteDireccion string  `json:"cliente_direccion"`
+	ClienteTelefono  string  `json:"cliente_telefono"`
+	EsAdeudo         int     `json:"es_adeudo"`
+	CreadoPorID      int     `json:"creado_por_id"`
+	AsignadoAID      *int    `json:"asignado_a_id"`
+	Estado           string  `json:"estado"`
+	CreatedOn        string  `json:"created_on"`
+	CompletadoOn     string  `json:"completado_on"`
+	CreadoPorNombre  string  `json:"creado_por_nombre"`
+	AsignadoANombre  string  `json:"asignado_a_nombre"`
 }
 
 func hashPassword(pw string) string {

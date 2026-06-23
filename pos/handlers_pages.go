@@ -16,6 +16,7 @@ type PageData struct {
 	Error    string
 	Success  string
 	OperacionActiva bool
+	UserID   int
 }
 
 func getOperacionActiva() bool {
@@ -140,6 +141,19 @@ func handleUsuariosPage(w http.ResponseWriter, r *http.Request) {
 
 func handleDepartamentosPage(w http.ResponseWriter, r *http.Request) {
 	render(w, r, "departamentos/list.html", PageData{Title: "Departamentos", Active: "departamentos", OperacionActiva: getOperacionActiva()})
+}
+
+func handlePedidosPage(w http.ResponseWriter, r *http.Request) {
+	render(w, r, "pedidos/list.html", PageData{Title: "Pedidos", Active: "pedidos", OperacionActiva: getOperacionActiva()})
+}
+
+func handleChatPage(w http.ResponseWriter, r *http.Request) {
+	sessionCookie, _ := r.Cookie("session")
+	var uid int
+	if sessionCookie != nil {
+		db.QueryRow("SELECT id FROM USUARIOS WHERE usuario=?", sessionCookie.Value).Scan(&uid)
+	}
+	render(w, r, "chat.html", PageData{Title: "Chat", Active: "chat", OperacionActiva: getOperacionActiva(), UserID: uid})
 }
 
 

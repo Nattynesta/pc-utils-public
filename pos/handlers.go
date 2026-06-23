@@ -13,6 +13,7 @@ import (
 	"sync"
 	"os"
 	"path/filepath"
+	"github.com/gorilla/websocket"
 )
 
 var offSync sync.Mutex
@@ -346,6 +347,73 @@ func handleProveedoresUpdate(w http.ResponseWriter, r *http.Request) {
 	jsonResp(w, map[string]string{"ok": "Proveedor actualizado"})
 }
 
+func handleProveedoresProductos(w http.ResponseWriter, r *http.Request) {
+	num := r.PathValue("num")
+	rows, err := db.Query("SELECT codigo, COALESCE(descripcion,''), COALESCE(pventa,0), COALESCE(dinventario,0) FROM PRODUCTOS WHERE provid=? ORDER BY descripcion", num)
+	if err != nil {
+		jsonErr(w, err.Error(), 500)
+		return
+	}
+	defer rows.Close()
+	type ProvProd struct {
+		Codigo      string  `json:"codigo"`
+		Descripcion string  `json:"descripcion"`
+		Pventa      float64 `json:"pventa"`
+		Stock       float64 `json:"stock"`
+	}
+	ps := make([]ProvProd, 0)
+	for rows.Next() {
+		var p ProvProd
+		rows.Scan(&p.Codigo, &p.Descripcion, &p.Pventa, &p.Stock)
+		ps = append(ps, p)
+	}
+	if ps == nil {
+		ps = []ProvProd{}
+	}
+	jsonResp(w, ps)
+}
+
+func handleProveedoresRecibir(w http.ResponseWriter, r *http.Request) {
+	num := r.PathValue("num")
+	var req struct {
+		Productos []struct {
+			Codigo   string  `json:"codigo"`
+			Cantidad float64 `json:"cantidad"`
+			Pcosto   float64 `json:"pcosto"`
+		} `json:"productos"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonErr(w, "JSON invalido", 400)
+		return
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		jsonErr(w, err.Error(), 500)
+		return
+	}
+	defer tx.Rollback()
+	for _, p := range req.Productos {
+		if p.Cantidad <= 0 {
+			continue
+		}
+		// Check if product exists
+		var exists int
+		tx.QueryRow("SELECT COUNT(*) FROM PRODUCTOS WHERE codigo=?", p.Codigo).Scan(&exists)
+		if exists == 0 {
+			jsonErr(w, "Producto no encontrado: "+p.Codigo, 400)
+			return
+		}
+		// Update stock and costo
+		if p.Pcosto > 0 {
+			tx.Exec("UPDATE PRODUCTOS SET dinventario=COALESCE(dinventario,0)+?, pcosto=?, provid=? WHERE codigo=?", p.Cantidad, p.Pcosto, num, p.Codigo)
+		} else {
+			tx.Exec("UPDATE PRODUCTOS SET dinventario=COALESCE(dinventario,0)+?, provid=? WHERE codigo=?", p.Cantidad, num, p.Codigo)
+		}
+	}
+	tx.Commit()
+	jsonResp(w, map[string]string{"ok": "Stock actualizado"})
+}
+
 // --- Departamentos ---
 
 func handleDepartamentosList(w http.ResponseWriter, r *http.Request) {
@@ -461,8 +529,12 @@ func handleUsuariosCreate(w http.ResponseWriter, r *http.Request) {
 	if u.Rol == "" {
 		u.Rol = "helper"
 	}
+	pw := u.Clave
+	if pw == "" {
+		pw = u.Usuario
+	}
 	_, err := db.Exec("INSERT INTO USUARIOS (nombre_completo, direccion, telefono, usuario, clave, activo, created_on, correo, rol) VALUES (?,?,?,?,?,?,?,?,?)",
-		u.NombreCompleto, u.Direccion, u.Telefono, u.Usuario, hashPassword(u.Usuario), u.Activo, now(), u.Correo, u.Rol)
+		u.NombreCompleto, u.Direccion, u.Telefono, u.Usuario, hashPassword(pw), u.Activo, now(), u.Correo, u.Rol)
 	if err != nil {
 		jsonErr(w, err.Error(), 400)
 		return
@@ -491,6 +563,263 @@ func handleUsuariosUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonResp(w, map[string]string{"ok": "Usuario actualizado"})
+}
+
+func handleUsuarioPassword(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var body struct {
+		Clave string `json:"clave"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonErr(w, "JSON invalido", 400)
+		return
+	}
+	if body.Clave == "" {
+		jsonErr(w, "La clave no puede estar vacia", 400)
+		return
+	}
+	_, err := db.Exec("UPDATE USUARIOS SET clave=? WHERE id=?", hashPassword(body.Clave), id)
+	if err != nil {
+		jsonErr(w, err.Error(), 400)
+		return
+	}
+	jsonResp(w, map[string]string{"ok": "Contrasena actualizada"})
+}
+
+// --- Pedidos ---
+
+func handlePedidosList(w http.ResponseWriter, r *http.Request) {
+	roleCookie, _ := r.Cookie("role")
+	userCookie, _ := r.Cookie("session")
+	isAdmin := roleCookie != nil && roleCookie.Value == "admin"
+
+	order := ` ORDER BY
+		CASE p.prioridad WHEN 'alta' THEN 1 WHEN 'media' THEN 2 WHEN 'baja' THEN 3 END,
+		CASE p.estado WHEN 'pendiente' THEN 1 WHEN 'en_proceso' THEN 2 WHEN 'completado' THEN 3 WHEN 'cancelado' THEN 4 END,
+		p.created_on DESC`
+
+	var ps []Pedido
+	var err error
+	var rows *sql.Rows
+	q := `SELECT p.id, p.items, p.total, p.prioridad, COALESCE(p.notas,''), COALESCE(p.cliente_nombre,''), COALESCE(p.cliente_direccion,''), COALESCE(p.cliente_telefono,''), p.es_adeudo, p.creado_por_id, p.asignado_a_id, p.estado, p.created_on, COALESCE(p.completado_on,''), COALESCE(cr.usuario,'?'), COALESCE(asi.usuario,'')
+		FROM PEDIDOS p
+		LEFT JOIN USUARIOS cr ON cr.id = p.creado_por_id
+		LEFT JOIN USUARIOS asi ON asi.id = p.asignado_a_id`
+
+	if isAdmin {
+		rows, err = db.Query(q + order)
+	} else {
+		var uid int
+		if userCookie != nil {
+			db.QueryRow("SELECT id FROM USUARIOS WHERE usuario=?", userCookie.Value).Scan(&uid)
+		}
+		rows, err = db.Query(q+` WHERE p.estado IN ('pendiente','en_proceso') OR p.asignado_a_id = ? OR p.creado_por_id = ?`+order, uid, uid)
+	}
+	if err != nil {
+		jsonErr(w, err.Error(), 500)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var p Pedido
+		rows.Scan(&p.ID, &p.Items, &p.Total, &p.Prioridad, &p.Notas, &p.ClienteNombre, &p.ClienteDireccion, &p.ClienteTelefono, &p.EsAdeudo, &p.CreadoPorID, &p.AsignadoAID, &p.Estado, &p.CreatedOn, &p.CompletadoOn, &p.CreadoPorNombre, &p.AsignadoANombre)
+		ps = append(ps, p)
+	}
+	jsonResp(w, ps)
+}
+
+func handlePedidosCreate(w http.ResponseWriter, r *http.Request) {
+	userCookie, _ := r.Cookie("session")
+	var usuarioID int
+	if userCookie != nil {
+		db.QueryRow("SELECT id FROM USUARIOS WHERE usuario=?", userCookie.Value).Scan(&usuarioID)
+	}
+	if usuarioID == 0 {
+		jsonErr(w, "Usuario no encontrado", 400)
+		return
+	}
+
+	var p Pedido
+	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+		jsonErr(w, "JSON invalido", 400)
+		return
+	}
+	if p.Total == 0 {
+		jsonErr(w, "Total requerido", 400)
+		return
+	}
+	if p.Prioridad == "" {
+		p.Prioridad = "media"
+	}
+
+	_, err := db.Exec(`INSERT INTO PEDIDOS (items, total, prioridad, notas, cliente_nombre, cliente_direccion, cliente_telefono, es_adeudo, creado_por_id, estado) VALUES (?,?,?,?,?,?,?,?,?,'pendiente')`,
+		p.Items, p.Total, p.Prioridad, p.Notas, p.ClienteNombre, p.ClienteDireccion, p.ClienteTelefono, p.EsAdeudo, usuarioID)
+	if err != nil {
+		jsonErr(w, err.Error(), 400)
+		return
+	}
+	jsonResp(w, map[string]string{"ok": "Pedido creado"})
+}
+
+func handlePedidosAsignar(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var body struct {
+		AsignadoAID int `json:"asignado_a_id"`
+	}
+	json.NewDecoder(r.Body).Decode(&body)
+
+	sessionCookie, _ := r.Cookie("session")
+	roleCookie, _ := r.Cookie("role")
+	var usuarioID int
+	if sessionCookie != nil {
+		db.QueryRow("SELECT id FROM USUARIOS WHERE usuario=?", sessionCookie.Value).Scan(&usuarioID)
+	}
+
+	isAdmin := roleCookie != nil && roleCookie.Value == "admin"
+
+	// Non-admin can only self-assign
+	targetID := body.AsignadoAID
+	if !isAdmin && targetID != 0 && targetID != usuarioID {
+		jsonErr(w, "Solo administradores pueden asignar a otros usuarios", 403)
+		return
+	}
+	if targetID == 0 {
+		targetID = usuarioID
+	}
+
+	_, err := db.Exec("UPDATE PEDIDOS SET asignado_a_id=?, estado='en_proceso' WHERE id=? AND (estado='pendiente' OR estado='en_proceso')", targetID, id)
+	if err != nil {
+		jsonErr(w, err.Error(), 400)
+		return
+	}
+	db.Exec("INSERT INTO PEDIDOS_LOG (pedido_id, usuario_id, accion) VALUES (?,?,'asignar')", id, usuarioID)
+	jsonResp(w, map[string]string{"ok": "Pedido asignado"})
+}
+
+func handlePedidosEstado(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var body struct {
+		Estado string `json:"estado"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonErr(w, "JSON invalido", 400)
+		return
+	}
+	valid := map[string]bool{"pendiente": true, "en_proceso": true, "completado": true, "cancelado": true}
+	if !valid[body.Estado] {
+		jsonErr(w, "Estado invalido", 400)
+		return
+	}
+
+	sessionCookie, _ := r.Cookie("session")
+	var usuarioID int
+	if sessionCookie != nil {
+		db.QueryRow("SELECT id FROM USUARIOS WHERE usuario=?", sessionCookie.Value).Scan(&usuarioID)
+	}
+
+	// If completado, create a credit VENTATICKETS
+	if body.Estado == "completado" {
+		var itemsJSON string
+		var total float64
+		var clienteNombre, clienteDireccion string
+		err := db.QueryRow("SELECT items, total, COALESCE(cliente_nombre,''), COALESCE(cliente_direccion,'') FROM PEDIDOS WHERE id=?", id).Scan(&itemsJSON, &total, &clienteNombre, &clienteDireccion)
+		if err == nil && total > 0 {
+			// Create credit ticket
+			var operacionID int
+			err = db.QueryRow("SELECT id FROM OPERACIONES WHERE abierta='t' LIMIT 1").Scan(&operacionID)
+			if err == nil {
+				var cajaID int
+				db.QueryRow("SELECT id FROM CAJAS ORDER BY id LIMIT 1").Scan(&cajaID)
+				if cajaID == 0 {
+					cajaID = 1
+				}
+				folio := 0
+				db.QueryRow("SELECT COALESCE(MAX(folio), 0) + 1 FROM VENTATICKETS").Scan(&folio)
+
+					nombre := "Pedido #" + id
+				if clienteNombre != "" {
+					nombre = clienteNombre + " (Pedido #" + id + ")"
+				}
+
+				// Parse items first to count them
+				type PedidoItem struct {
+					Codigo   string  `json:"codigo"`
+					Nombre   string  `json:"nombre"`
+					Cantidad float64 `json:"cantidad"`
+					Precio   float64 `json:"precio"`
+				}
+				var items []PedidoItem
+				json.Unmarshal([]byte(itemsJSON), &items)
+
+				// Look up cliente_id from CLIENTES table
+				var clienteID *int
+				if clienteNombre != "" {
+					var cid int
+					if db.QueryRow("SELECT numero FROM CLIENTES WHERE nombre=? LIMIT 1", clienteNombre).Scan(&cid) == nil {
+						clienteID = &cid
+					}
+				}
+
+				_, err := db.Exec(`INSERT INTO VENTATICKETS (folio, caja_id, cajero_id, prioridad, cliente_id, creado_en, esta_abierto, operacion_id, es_modificable, nombre, total, subtotal, forma_pago, esta_cancelado, numero_articulos) VALUES (?,?,?,0,?,?,'f',?,'f',?,?,?,'c','f',?)`,
+					folio, cajaID, usuarioID, clienteID, now(), operacionID, nombre, total, total, len(items))
+				if err == nil {
+					var ticketID int64
+					db.QueryRow("SELECT last_insert_rowid()").Scan(&ticketID)
+					for _, it := range items {
+						db.Exec(`INSERT INTO VENTATICKETS_ARTICULOS (ticket_id, producto_codigo, producto_nombre, cantidad, ganancia, precio_usado, impuesto_unitario) VALUES (?,?,?,?,0,?,0)`,
+							ticketID, it.Codigo, it.Nombre, it.Cantidad, it.Precio)
+					}
+				}
+			}
+		}
+	}
+
+	q := "UPDATE PEDIDOS SET estado=?"
+	if body.Estado == "completado" {
+		q += ", completado_on=datetime('now','localtime')"
+	}
+	q += " WHERE id=?"
+	_, err := db.Exec(q, body.Estado, id)
+	if err != nil {
+		jsonErr(w, err.Error(), 400)
+		return
+	}
+
+	db.Exec("INSERT INTO PEDIDOS_LOG (pedido_id, usuario_id, accion) VALUES (?,?,?)", id, usuarioID, body.Estado)
+	jsonResp(w, map[string]string{"ok": "Estado actualizado"})
+}
+
+func handlePedidosStats(w http.ResponseWriter, r *http.Request) {
+	rows, err := db.Query(`
+		SELECT u.id, u.usuario, COALESCE(u.nombre_completo,'?'),
+			COALESCE((SELECT COUNT(*) FROM PEDIDOS_LOG WHERE usuario_id=u.id AND accion='asignar'),0) as tomados,
+			COALESCE((SELECT COUNT(*) FROM PEDIDOS WHERE asignado_a_id=u.id AND estado='completado'),0) as completados,
+			COALESCE((SELECT COALESCE(SUM(total),0) FROM PEDIDOS WHERE asignado_a_id=u.id AND estado='completado'),0) as total_vendido
+		FROM USUARIOS u
+		WHERE u.rol='helper' OR u.rol='admin'
+		ORDER BY tomados DESC, completados DESC`)
+	if err != nil {
+		jsonErr(w, err.Error(), 500)
+		return
+	}
+	defer rows.Close()
+
+	type StatEntry struct {
+		ID           int     `json:"id"`
+		Usuario      string  `json:"usuario"`
+		Nombre       string  `json:"nombre"`
+		Tomados      int     `json:"tomados"`
+		Completados  int     `json:"completados"`
+		TotalVendido float64 `json:"total_vendido"`
+	}
+	stats := make([]StatEntry, 0)
+	for rows.Next() {
+		var s StatEntry
+		rows.Scan(&s.ID, &s.Usuario, &s.Nombre, &s.Tomados, &s.Completados, &s.TotalVendido)
+		stats = append(stats, s)
+	}
+	jsonResp(w, stats)
 }
 
 // --- Cajas ---
@@ -722,7 +1051,7 @@ func handleTicketCrear(w http.ResponseWriter, r *http.Request) {
 func handleTicketGet(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var t VentaTicket
-	err := db.QueryRow(`SELECT t.id, t.folio, t.caja_id, t.cajero_id, COALESCE(t.nombre,''), t.prioridad, t.creado_en, COALESCE(t.subtotal,0), COALESCE(t.impuestos,0), COALESCE(t.total,0), COALESCE(t.ganancia,0), t.esta_abierto, t.cliente_id, COALESCE(t.vendido_en,''), t.es_modificable, COALESCE(t.pago_con,0), COALESCE(t.moneda,''), COALESCE(t.numero_articulos,0), COALESCE(t.pagado_en,''), t.esta_cancelado, t.operacion_id, COALESCE(t.forma_pago,''), COALESCE(t.referencia,''), COALESCE(t.total_devuelto,0), COALESCE(c.nombre,''), COALESCE(c.direccion,'') FROM VENTATICKETS t LEFT JOIN CLIENTES c ON t.cliente_id=c.numero WHERE t.id=?`, id).Scan(&t.ID, &t.Folio, &t.CajaID, &t.CajeroID, &t.Nombre, &t.Prioridad, &t.CreadoEn, &t.Subtotal, &t.Impuestos, &t.Total, &t.Ganancia, &t.EstaAbierto, &t.ClienteID, &t.VendidoEn, &t.EsModificable, &t.PagoCon, &t.Moneda, &t.NumeroArticulos, &t.PagadoEn, &t.EstaCancelado, &t.OperacionID, &t.FormaPago, &t.Referencia, &t.TotalDevuelto, &t.ClienteNombre, &t.ClienteDireccion)
+	err := db.QueryRow(`SELECT t.id, t.folio, t.caja_id, t.cajero_id, COALESCE(t.nombre,''), t.prioridad, t.creado_en, COALESCE(t.subtotal,0), COALESCE(t.impuestos,0), COALESCE(t.total,0), COALESCE(t.ganancia,0), t.esta_abierto, t.cliente_id, COALESCE(t.vendido_en,''), t.es_modificable, COALESCE(t.pago_con,0), COALESCE(t.moneda,''), COALESCE(t.numero_articulos,0), COALESCE(t.pagado_en,''), t.esta_cancelado, t.operacion_id, COALESCE(t.forma_pago,''), COALESCE(t.referencia,''), COALESCE(t.total_devuelto,0), COALESCE(c.nombre,''), COALESCE(c.direccion,''), COALESCE(u.usuario,'') FROM VENTATICKETS t LEFT JOIN CLIENTES c ON t.cliente_id=c.numero LEFT JOIN USUARIOS u ON u.id=t.cajero_id WHERE t.id=?`, id).Scan(&t.ID, &t.Folio, &t.CajaID, &t.CajeroID, &t.Nombre, &t.Prioridad, &t.CreadoEn, &t.Subtotal, &t.Impuestos, &t.Total, &t.Ganancia, &t.EstaAbierto, &t.ClienteID, &t.VendidoEn, &t.EsModificable, &t.PagoCon, &t.Moneda, &t.NumeroArticulos, &t.PagadoEn, &t.EstaCancelado, &t.OperacionID, &t.FormaPago, &t.Referencia, &t.TotalDevuelto, &t.ClienteNombre, &t.ClienteDireccion, &t.CajeroNombre)
 	if err == sql.ErrNoRows {
 		jsonErr(w, "Ticket no encontrado", 404)
 		return
@@ -780,8 +1109,18 @@ func handleTicketAddArticulo(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	_, err = tx.Exec(`INSERT INTO VENTATICKETS_ARTICULOS (ticket_id, producto_codigo, producto_nombre, cantidad, ganancia, precio_usado, departamento_id, impuesto_unitario) VALUES (?,?,?,?,?,?,?,0)`,
-		id, p.Codigo, p.Descripcion, req.Cantidad, ganancia*req.Cantidad, precio, p.Dept)
+	// Check if product already exists in this ticket → accumulate quantity
+	var existingID int
+	err = tx.QueryRow(`SELECT id FROM VENTATICKETS_ARTICULOS WHERE ticket_id=? AND producto_codigo=?`, id, req.ProductoCodigo).Scan(&existingID)
+	if err == nil {
+		// Product exists: update cantidad and ganancia
+		_, err = tx.Exec(`UPDATE VENTATICKETS_ARTICULOS SET cantidad = cantidad + ?, ganancia = ganancia + ? WHERE id=?`,
+			req.Cantidad, ganancia*req.Cantidad, existingID)
+	} else {
+		// New product: insert row
+		_, err = tx.Exec(`INSERT INTO VENTATICKETS_ARTICULOS (ticket_id, producto_codigo, producto_nombre, cantidad, ganancia, precio_usado, departamento_id, impuesto_unitario) VALUES (?,?,?,?,?,?,?,0)`,
+			id, p.Codigo, p.Descripcion, req.Cantidad, ganancia*req.Cantidad, precio, p.Dept)
+	}
 	if err != nil {
 		jsonErr(w, err.Error(), 400)
 		return
@@ -897,9 +1236,18 @@ func handleTicketActualizarPrioridad(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleTicketDelete(w http.ResponseWriter, r *http.Request) {
+	sessionCookie, _ := r.Cookie("session")
+	var usuarioID int
+	if sessionCookie != nil {
+		db.QueryRow("SELECT id FROM USUARIOS WHERE usuario=?", sessionCookie.Value).Scan(&usuarioID)
+	}
 	if !isAdmin(r) {
-		jsonErr(w, "Solo admin puede borrar tickets", 403)
-		return
+		var cajeroID int
+		db.QueryRow("SELECT cajero_id FROM VENTATICKETS WHERE id=?", r.PathValue("id")).Scan(&cajeroID)
+		if cajeroID != usuarioID {
+			jsonErr(w, "Solo admin o el creador del ticket puede borrarlo", 403)
+			return
+		}
 	}
 	id := r.PathValue("id")
 	tx, err := db.Begin()
@@ -1274,4 +1622,266 @@ func handleReportesTopProductos(w http.ResponseWriter, r *http.Request) {
 		rs = []map[string]interface{}{}
 	}
 	jsonResp(w, rs)
+}
+
+func handleAdminResetVentas(w http.ResponseWriter, r *http.Request) {
+	_, _ = db.Exec("DELETE FROM VENTAS")
+	_, _ = db.Exec("DELETE FROM VENTATICKETS_ARTICULOS")
+	_, _ = db.Exec("DELETE FROM PEDIDOS_LOG")
+	_, _ = db.Exec("DELETE FROM PEDIDOS")
+	_, _ = db.Exec("DELETE FROM VENTATICKETS")
+	jsonResp(w, map[string]string{"ok": "Ventas, tickets y pedidos reiniciados"})
+}
+
+func handleChatOnline(w http.ResponseWriter, r *http.Request) {
+	var count int
+	db.QueryRow("SELECT COUNT(*) FROM USUARIOS WHERE activo='t'").Scan(&count)
+	jsonResp(w, map[string]int{"count": count})
+}
+
+var wsUpgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true
+		}
+		allowed := []string{
+			"http://localhost:8080",
+			"http://127.0.0.1:8080",
+			"http://100.66.83.37:8080",
+			"http://100.92.186.120:8080",
+		}
+		for _, a := range allowed {
+			if origin == a {
+				return true
+			}
+		}
+		return false
+	},
+}
+
+type wsClient struct {
+	conn     *websocket.Conn
+	userID   int
+	username string
+	send     chan []byte
+}
+
+var (
+	wsClients    = make(map[*wsClient]bool)
+	wsClientsMu  sync.Mutex
+	wsRegister   = make(chan *wsClient)
+	wsUnregister = make(chan *wsClient)
+	wsBroadcast  = make(chan []byte)
+)
+
+func runWSHub() {
+	for {
+		select {
+		case client := <-wsRegister:
+			wsClientsMu.Lock()
+			wsClients[client] = true
+			wsClientsMu.Unlock()
+		case client := <-wsUnregister:
+			wsClientsMu.Lock()
+			if _, ok := wsClients[client]; ok {
+				delete(wsClients, client)
+				close(client.send)
+			}
+			wsClientsMu.Unlock()
+		case message := <-wsBroadcast:
+			wsClientsMu.Lock()
+			for client := range wsClients {
+				select {
+				case client.send <- message:
+				default:
+					delete(wsClients, client)
+					close(client.send)
+				}
+			}
+			wsClientsMu.Unlock()
+		}
+	}
+}
+
+func handleChatWS(w http.ResponseWriter, r *http.Request) {
+	conn, err := wsUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+
+	client := &wsClient{
+		conn: conn,
+		send: make(chan []byte, 256),
+	}
+
+	conn.SetReadLimit(4096)
+	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	conn.SetPongHandler(func(string) error {
+		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		return nil
+	})
+
+	wsRegister <- client
+
+	var writeOnce sync.Once
+	closeSend := func() {
+		writeOnce.Do(func() {
+			close(client.send)
+		})
+	}
+
+	go func() {
+		for msg := range client.send {
+			conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+				return
+			}
+		}
+		conn.Close()
+	}()
+
+	authenticated := false
+	authTimer := time.AfterFunc(5*time.Second, func() {
+		if !authenticated {
+			select {
+			case client.send <- []byte(`{"type":"error","id":"auth","error":"auth_timeout"}`):
+			default:
+			}
+			closeSend()
+		}
+	})
+	defer authTimer.Stop()
+
+	for {
+		_, message, err := conn.ReadMessage()
+		if err != nil {
+			break
+		}
+
+		var msg struct {
+			Type    string `json:"type"`
+			Token   string `json:"token"`
+			Payload string `json:"payload"`
+			ID      string `json:"id"`
+		}
+		if err := json.Unmarshal(message, &msg); err != nil {
+			sendError(client, "parse", "invalid_json")
+			continue
+		}
+
+		switch msg.Type {
+		case "auth":
+			if authenticated {
+				sendError(client, msg.ID, "already_authenticated")
+				continue
+			}
+			if msg.Token == "" {
+				sendError(client, msg.ID, "missing_token")
+				continue
+			}
+			var uid int
+			db.QueryRow("SELECT id FROM USUARIOS WHERE usuario=?", msg.Token).Scan(&uid)
+			if uid == 0 {
+				sendError(client, msg.ID, "invalid_token")
+				continue
+			}
+			var username string
+			db.QueryRow("SELECT usuario FROM USUARIOS WHERE id=?", uid).Scan(&username)
+			client.userID = uid
+			client.username = username
+			authenticated = true
+			authTimer.Stop()
+			sendAck(client, msg.ID, "authenticated")
+
+		case "chat":
+			if !authenticated {
+				sendError(client, msg.ID, "not_authenticated")
+				continue
+			}
+			if msg.Payload == "" {
+				sendError(client, msg.ID, "empty_message")
+				continue
+			}
+			_, err := db.Exec("INSERT INTO CHAT_MESSAGES (usuario_id, mensaje) VALUES (?,?)", client.userID, msg.Payload)
+			if err != nil {
+				sendError(client, msg.ID, "db_error")
+				continue
+			}
+			var created string
+			db.QueryRow("SELECT created_on FROM CHAT_MESSAGES WHERE id=last_insert_rowid()").Scan(&created)
+			broadcast := map[string]interface{}{
+				"type":     "chat",
+				"id":       msg.ID,
+				"user_id":  client.userID,
+				"username": client.username,
+				"message":  msg.Payload,
+				"created":  created,
+			}
+			data, _ := json.Marshal(broadcast)
+			wsBroadcast <- data
+			sendAck(client, msg.ID, "sent")
+
+		case "ping":
+			sendAck(client, msg.ID, "pong")
+
+		default:
+			sendError(client, msg.ID, "unknown_type")
+		}
+	}
+	closeSend()
+	wsUnregister <- client
+}
+
+func sendAck(client *wsClient, id, status string) {
+	data, _ := json.Marshal(map[string]string{"type": "ack", "id": id, "status": status})
+	select {
+	case client.send <- data:
+	default:
+	}
+}
+
+func sendError(client *wsClient, id, err string) {
+	data, _ := json.Marshal(map[string]string{"type": "error", "id": id, "error": err})
+	select {
+	case client.send <- data:
+	default:
+	}
+}
+
+func handleChatMensajes(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "GET" {
+		rows, err := db.Query(`SELECT cm.id, cm.usuario_id, cm.mensaje, cm.created_on, u.usuario FROM CHAT_MESSAGES cm JOIN USUARIOS u ON u.id=cm.usuario_id ORDER BY cm.created_on DESC LIMIT 100`)
+		if err != nil { jsonErr(w, err.Error(), 500); return }
+		defer rows.Close()
+		msgs := make([]map[string]interface{}, 0)
+		for rows.Next() {
+			var id, uid int; var msg, created, usuario string
+			rows.Scan(&id, &uid, &msg, &created, &usuario)
+			msgs = append(msgs, map[string]interface{}{"id":id, "user_id":uid, "message":msg, "created":created, "username":usuario})
+		}
+		if msgs == nil { msgs = []map[string]interface{}{} }
+		jsonResp(w, msgs)
+		return
+	}
+	if r.Method == "POST" {
+		var body struct{Mensaje string `json:"mensaje"`}
+		json.NewDecoder(r.Body).Decode(&body)
+		if body.Mensaje == "" { jsonErr(w, "Mensaje vacío", 400); return }
+		sessionCookie, _ := r.Cookie("session")
+		var uid int
+		if sessionCookie != nil { db.QueryRow("SELECT id FROM USUARIOS WHERE usuario=?", sessionCookie.Value).Scan(&uid) }
+		if uid == 0 { jsonErr(w, "No autenticado", 401); return }
+		_, err := db.Exec("INSERT INTO CHAT_MESSAGES (usuario_id, mensaje) VALUES (?,?)", uid, body.Mensaje)
+		if err != nil { jsonErr(w, err.Error(), 500); return }
+		var msgCreated string
+		db.QueryRow("SELECT created_on FROM CHAT_MESSAGES WHERE id=last_insert_rowid()").Scan(&msgCreated)
+		var usuario string
+		db.QueryRow("SELECT usuario FROM USUARIOS WHERE id=?", uid).Scan(&usuario)
+		msgData, _ := json.Marshal(map[string]interface{}{
+			"id": 0, "usuario_id": uid, "mensaje": body.Mensaje, "created_on": msgCreated, "usuario": usuario,
+		})
+		wsBroadcast <- msgData
+		jsonResp(w, map[string]string{"ok":"enviado"})
+	}
 }

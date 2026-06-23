@@ -362,3 +362,40 @@ CREATE TABLE IF NOT EXISTS PRODUCTOS_OFF (
 CREATE TABLE IF NOT EXISTS SCHEMA_INFO (
     version_db INTEGER
 );
+
+CREATE TABLE IF NOT EXISTS PEDIDOS (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    items TEXT NOT NULL DEFAULT '[]',
+    total REAL NOT NULL DEFAULT 0,
+    prioridad TEXT NOT NULL DEFAULT 'media',
+    notas TEXT DEFAULT '',
+    cliente_nombre TEXT DEFAULT '',
+    cliente_direccion TEXT DEFAULT '',
+    cliente_telefono TEXT DEFAULT '',
+    es_adeudo INTEGER DEFAULT 0,
+    creado_por_id INTEGER NOT NULL,
+    asignado_a_id INTEGER,
+    estado TEXT NOT NULL DEFAULT 'pendiente',
+    created_on TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    completado_on TEXT,
+    FOREIGN KEY (creado_por_id) REFERENCES USUARIOS(id),
+    FOREIGN KEY (asignado_a_id) REFERENCES USUARIOS(id)
+);
+
+CREATE TABLE IF NOT EXISTS PEDIDOS_LOG (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    pedido_id INTEGER NOT NULL,
+    usuario_id INTEGER NOT NULL,
+    accion TEXT NOT NULL,
+    created_on TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (pedido_id) REFERENCES PEDIDOS(id),
+    FOREIGN KEY (usuario_id) REFERENCES USUARIOS(id)
+);
+
+CREATE TABLE IF NOT EXISTS CHAT_MESSAGES (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario_id INTEGER NOT NULL,
+    mensaje TEXT NOT NULL,
+    created_on TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (usuario_id) REFERENCES USUARIOS(id)
+);

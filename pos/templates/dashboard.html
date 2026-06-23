@@ -5,7 +5,7 @@
     <div class="card stat"><div class="value" id="ingresosHoy">${{printf "%.2f" .Data.IngresosHoy}}</div><div class="label">Ingresos Hoy</div></div>
     <div class="card stat"><div class="value" id="gananciaHoy">${{printf "%.2f" .Data.GananciaHoy}}</div><div class="label">Ganancia Hoy</div></div>
     <div class="card stat"><div class="value" id="productosStock">{{.Data.ProductosStock}}</div><div class="label">Productos con Stock</div></div>
-    <div class="card stat"><div class="value" id="valorInventario">${{printf "%.2f" .Data.ValorInventario}}</div><div class="label">Valor Inventario</div></div>
+    <div class="card stat" onclick="mostrarValorInventario()" style="cursor:pointer"><div class="value" id="valorInventario">******</div><div class="label">Valor Inventario <small style="color:var(--text3)">(click)</small></div></div>
     <div class="card stat">
         <div class="value">{{if .Data.OperacionActiva}}Abierta{{else}}Cerrada{{end}}</div>
         <div class="label">Caja</div>
@@ -26,6 +26,13 @@
 </div>
 
 <script>
+var viTimer;
+function mostrarValorInventario(){
+  var el = document.getElementById('valorInventario');
+  el.textContent = '${{printf "%.2f" .Data.ValorInventario}}';
+  clearTimeout(viTimer);
+  viTimer = setTimeout(function(){ el.textContent = '******'; }, 5000);
+}
 fetch('/api/tickets').then(r=>r.json()).then(ts=>{
     var hoy = new Date().toISOString().slice(0,10);
     var filtrados = ts.filter(function(t){ return t.creado_en && t.creado_en.slice(0,10) === hoy; });
