@@ -104,8 +104,7 @@ function openChat(userId, username, el){
     cont.innerHTML = '';
     var filtered = msgs.filter(function(m){
       var uid = m.user_id || m.usuario_id || 0;
-      var u = m.username || m.usuario || '';
-      return (uid === currentUserId && u === receiverName) || (uid === currentReceiver && u === currentUser);
+      return uid === currentUserId || uid === currentReceiver;
     });
     if(!filtered.length){
       cont.innerHTML = '<div class="empty-chat">Sin mensajes aún</div>';
@@ -164,7 +163,7 @@ function conectarWS(){
     if(m.type === 'chat'){
       var sid = m.user_id || m.usuario_id || 0;
       var sender = m.username || m.usuario || '';
-      if(sid === currentReceiver || sender === receiverName || sender === currentUser){
+      if(sid === currentReceiver || sid === currentUserId){
         appendMessage(m);
       }
     }
