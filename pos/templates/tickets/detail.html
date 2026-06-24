@@ -19,7 +19,6 @@
         <tbody id="td-articulos"></tbody>
         <tfoot>
             <tr><td colspan="3" class="text-right"><strong>Subtotal</strong></td><td id="td-subtotal"></td></tr>
-            <tr><td colspan="3" class="text-right"><strong>Impuestos</strong></td><td id="td-impuestos"></td></tr>
             <tr><td colspan="3" class="text-right"><strong>Total</strong></td><td id="td-total"></td></tr>
             <tr><td colspan="3" class="text-right"><strong>Pago con</strong></td><td id="td-pago"></td></tr>
             <tr><td colspan="3" class="text-right"><strong>Cambio</strong></td><td id="td-cambio"></td></tr>
@@ -96,7 +95,6 @@ fetch('/api/tickets/'+ticketId).then(r=>r.json()).then(function(t){
     else if(esCredito){ estado.textContent='Crédito'; estado.className='btn btn-sm btn-danger'; }
     else { estado.textContent='Pagado'; estado.className='btn btn-sm btn-success'; }
     document.getElementById('td-subtotal').textContent = '$'+t.subtotal.toFixed(2);
-    document.getElementById('td-impuestos').textContent = '$'+t.impuestos.toFixed(2);
     document.getElementById('td-total').textContent = '$'+t.total.toFixed(2);
     document.getElementById('td-pago').textContent = '$'+(t.pago_con||0).toFixed(2);
     document.getElementById('td-cambio').textContent = '$'+(t.total_devuelto||0).toFixed(2);
