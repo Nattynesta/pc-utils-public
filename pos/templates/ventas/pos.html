@@ -36,6 +36,9 @@
 .pos-toolbar select:focus { outline:none; border-color:var(--primary); }
 .btn-off { display:flex; align-items:center; gap:.3rem; padding:.45rem .8rem; border:1.5px solid var(--border); border-radius:8px; background:var(--bg2); font-size:.85rem; cursor:pointer; transition:all .15s; white-space:nowrap; color:var(--text2); }
 .btn-off:hover { border-color:var(--primary); color:var(--primary); background:rgba(8,145,178,.1); }
+.btn-ignore-stock { display:flex; align-items:center; gap:.3rem; padding:.45rem .8rem; border:1.5px solid var(--danger); border-radius:8px; background:transparent; font-size:.85rem; cursor:pointer; transition:all .15s; white-space:nowrap; color:var(--danger); }
+.btn-ignore-stock:hover { background:rgba(239,68,68,.1); }
+.btn-ignore-stock.active { background:var(--danger); color:white; }
 
 .kbd-hint { display:none; font-size:.65rem; color:var(--text3); background:var(--bg3); padding:.15rem .4rem; border-radius:4px; border:1px solid var(--border); margin-left:.3rem; }
 @media(min-width:768px){ .kbd-hint { display:inline; } }
@@ -262,6 +265,7 @@
         <i class="ti ti-search search-icon"></i>
         <input type="text" id="search" placeholder="Buscar o escanear código..." oninput="searchProductos(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();escanearCodigo(this.value)}" autofocus>
       </div>
+      <button class="btn-ignore-stock" id="btn-ignore-stock" onclick="toggleIgnoreStock()" title="Ignorar stock agotado"><i class="ti ti-circle-off"></i><span> Stock</span></button>
       <button class="btn-off" onclick="sincronizarOFF(this)" title="Sincronizar OFF"><i class="ti ti-cloud-download"></i><span class="off-label"> OFF</span></button>
     </div>
     <div class="dept-chips" id="dept-chips"></div>
@@ -357,7 +361,7 @@
 
 <script>
 var allProductos = [], departamentos = [], articulos = [], deptColors = {};
-var selectedCliente = null, clientSearchTimeout;
+var selectedCliente = null, clientSearchTimeout, ignoreStock = false;
 var cobroConfirmado = false, cobroResolve = null;
 var PRIO_LABELS = {0:'Normal',1:'Baja',2:'Normal',3:'Alta',4:'Urgente'};
 var PRIO_COLORS = {0:'#e5e7eb',1:'#e5e7eb',2:'#fef3c7',3:'#fee2e2',4:'#fecaca'};
@@ -408,6 +412,14 @@ function setPosMode(mode){
   else if(window.innerWidth < 1024) setPosMode('tablet');
   else setPosMode('desktop');
 })();
+
+/* ===== IGNORE STOCK TOGGLE ===== */
+function toggleIgnoreStock(){
+  ignoreStock = !ignoreStock;
+  document.getElementById('btn-ignore-stock').classList.toggle('active', ignoreStock);
+  renderProductos(productosFiltrados());
+  notif(ignoreStock ? 'Ignorando stock agotado' : 'Stock activado','warning');
+}
 
 /* ===== KEYBOARD SHORTCUTS ===== */
 document.addEventListener('keydown', function(e){
@@ -557,8 +569,8 @@ function renderProductCard(p){
   var stk = sinStock ? '<span class="stock-badge out">S/Stock</span>' : (p.dinventario<=5 ? '<span class="stock-badge low" style="font-size:.6rem;">'+p.dinventario+'</span>' : '');
   var ex = articulos.find(function(a){return a.producto_codigo===p.codigo;});
   var qtyHtml = ex ? '<div class="qty-overlay show"><button class="qty-btn" onclick="event.stopPropagation();cambiarCantidadRapida(\''+p.codigo+'\',-1)">&minus;</button><span class="qty-num">'+ex.cantidad+'</span><button class="qty-btn" onclick="event.stopPropagation();agregarAlCarrito(\''+p.codigo+'\')">+</button></div>' : '';
-  var shieldHtml = sinStock ? '<div class="sin-stock-shield show"><span>Sin Stock</span></div>' : '';
-  return '<div class="product-card" onclick="'+(sinStock?'':'agregarAlCarrito(\''+p.codigo+'\')')+'"><button class="pv-info-btn" onclick="event.stopPropagation();mostrarQuickView(\''+p.codigo+'\')"><i class="ti ti-eye"></i></button><div class="pimg" style="background:'+c+'">'+imgHtml+stk+qtyHtml+shieldHtml+'<div class="pprice-tag"><span>$'+p.pventa.toFixed(2)+'</span></div></div><div class="pinfo"><div class="pname">'+(p.descripcion||p.codigo)+'</div></div></div>';
+  var shieldHtml = sinStock && !ignoreStock ? '<div class="sin-stock-shield show"><span>Sin Stock</span></div>' : '';
+  return '<div class="product-card" onclick="agregarAlCarrito(\''+p.codigo+'\')"><button class="pv-info-btn" onclick="event.stopPropagation();mostrarQuickView(\''+p.codigo+'\')"><i class="ti ti-eye"></i></button><div class="pimg" style="background:'+c+'">'+imgHtml+stk+qtyHtml+shieldHtml+'<div class="pprice-tag"><span>$'+p.pventa.toFixed(2)+'</span></div></div><div class="pinfo"><div class="pname">'+(p.descripcion||p.codigo)+'</div></div></div>';
 }
 
 var searchTimeout;
@@ -598,7 +610,7 @@ function cambiarCantidadRapida(codigo, delta){
 
 function agregarAlCarrito(codigo){
   var p = allProductos.find(function(x){return x.codigo===codigo;}); if(!p) return;
-  if(p.dinventario <= 0){ notif(p.descripcion||p.codigo+' sin stock','warning'); return; }
+  if(p.dinventario <= 0 && !ignoreStock){ notif(p.descripcion||p.codigo+' sin stock','warning'); return; }
   var ex = articulos.find(function(a){return a.producto_codigo===codigo;});
   if(ex){ex.cantidad+=1;actualizarCarrito();renderProductos(productosFiltrados());notif(p.descripcion||p.codigo+' +1','success');return;}
   articulos.push({producto_codigo:p.codigo,producto_nombre:p.descripcion,cantidad:1,precio_usado:p.pventa,ganancia:p.pventa-p.pcosto});
