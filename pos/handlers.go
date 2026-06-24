@@ -1860,6 +1860,19 @@ func sendError(client *wsClient, id, err string) {
 	}
 }
 
+func handleChatClear(w http.ResponseWriter, r *http.Request) {
+	if !isAdmin(r) {
+		jsonErr(w, "Solo administradores", 403)
+		return
+	}
+	_, err := db.Exec("DELETE FROM CHAT_MESSAGES")
+	if err != nil {
+		jsonErr(w, err.Error(), 500)
+		return
+	}
+	jsonResp(w, map[string]string{"ok": "Mensajes eliminados"})
+}
+
 func handleChatMensajes(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
 		rows, err := db.Query(`SELECT cm.id, cm.usuario_id, cm.mensaje, cm.created_on, u.usuario FROM CHAT_MESSAGES cm JOIN USUARIOS u ON u.id=cm.usuario_id ORDER BY cm.created_on DESC LIMIT 100`)
