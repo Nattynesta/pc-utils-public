@@ -1,8 +1,7 @@
 package main
 
 import (
-	"crypto/sha256"
-	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 )
@@ -17,6 +16,7 @@ type PageData struct {
 	Success  string
 	OperacionActiva bool
 	UserID   int
+	CSRFToken string
 }
 
 func getOperacionActiva() bool {
@@ -55,14 +55,27 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		render(w, r, "login.html", PageData{Title: "Iniciar Sesion", Error: "Usuario o clave incorrectos"})
 		return
 	}
-	h := sha256.Sum256([]byte(pw))
-	if fmt.Sprintf("%x", h) != hash {
+	if isSHA256Hash(hash) {
+		if _, err := migrateHash(pw, hash); err != nil {
+			render(w, r, "login.html", PageData{Title: "Iniciar Sesion", Error: "Usuario o clave incorrectos"})
+			return
+		}
+		newHash, err := HashPassword(pw)
+		if err != nil {
+			slog.Error("bcrypt hash failed during migration", "user", user, "err", err)
+			render(w, r, "login.html", PageData{Title: "Iniciar Sesion", Error: "Error interno"})
+			return
+		}
+		db.Exec("UPDATE USUARIOS SET clave=? WHERE id=?", newHash, id)
+		slog.Info("migrated user to bcrypt", "user", user, "id", id)
+	} else if !CheckPassword(pw, hash) {
 		render(w, r, "login.html", PageData{Title: "Iniciar Sesion", Error: "Usuario o clave incorrectos"})
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: "session", Value: user, Path: "/"})
 	http.SetCookie(w, &http.Cookie{Name: "user_id", Value: strconv.Itoa(id), Path: "/"})
 	http.SetCookie(w, &http.Cookie{Name: "role", Value: rol, Path: "/"})
+	http.SetCookie(w, &http.Cookie{Name: "csrf_token", Value: csrfToken(), Path: "/", HttpOnly: false})
 	if rol == "helper" {
 		http.Redirect(w, r, "/ventas/pos", http.StatusSeeOther)
 	} else {

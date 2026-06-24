@@ -105,6 +105,21 @@
                 if (alert) setTimeout(function() { alert.remove(); }, 3000);
             }
         });
+        (function(){
+            var csrf = document.cookie.split('; ').find(function(c){return c.startsWith('csrf_token=');});
+            var token = csrf ? csrf.split('=')[1] : '';
+            if(token){
+                var origFetch = window.fetch;
+                window.fetch = function(url, opts){
+                    opts = opts || {};
+                    opts.headers = opts.headers || {};
+                    if(opts.method && opts.method !== 'GET' && opts.method !== 'HEAD'){
+                        opts.headers['X-CSRF-Token'] = token;
+                    }
+                    return origFetch.call(window, url, opts);
+                };
+            }
+        })();
     </script>
 </body>
 </html>

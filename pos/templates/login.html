@@ -26,6 +26,7 @@
         <p>Sistema de Punto de Venta</p>
         {{if .Error}}<div class="alert-error">{{.Error}}</div>{{end}}
         <form method="POST" action="/login">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
             <div class="form-group">
                 <label for="usuario">Usuario</label>
                 <input type="text" id="usuario" name="usuario" required autofocus>

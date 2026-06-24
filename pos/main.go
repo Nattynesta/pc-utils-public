@@ -53,6 +53,10 @@ func main() {
 		log.Fatalf("Error migrating: %v", err)
 	}
 
+	if err := initCSRF(); err != nil {
+		log.Fatalf("Error initializing CSRF: %v", err)
+	}
+
 	sub, _ := fs.Sub(templateFS, "templates")
 	baseBytes, _ := fs.ReadFile(sub, "base.html")
 	loginBytes, _ := fs.ReadFile(sub, "login.html")
@@ -219,7 +223,7 @@ func main() {
 
 	addr := fmt.Sprintf("0.0.0.0:%s", port)
 	log.Printf("Abarrotes PDV corriendo en http://localhost%s", addr)
-	log.Fatal(http.ListenAndServe(addr, withCORS(withAuth(mux))))
+	log.Fatal(http.ListenAndServe(addr, withRateLimit(withCSRF(withCORS(withAuth(mux))))))
 }
 
 func migrate(db *sql.DB) error {
@@ -239,14 +243,16 @@ func migrate(db *sql.DB) error {
 	var count int
 	db.QueryRow("SELECT COUNT(*) FROM USUARIOS").Scan(&count)
 	if count == 0 {
+		adminHash, _ := HashPassword("admin")
 		db.Exec(`INSERT INTO USUARIOS (usuario, clave, activo, created_on, rol) VALUES (?, ?, 't', ?, 'admin')`,
-			"admin", hashPassword("admin"), time.Now().Format("2006-01-02 15:04:05"))
+			"admin", adminHash, time.Now().Format("2006-01-02 15:04:05"))
 	}
 	var helperExists int
 	db.QueryRow("SELECT COUNT(*) FROM USUARIOS WHERE usuario='helper'").Scan(&helperExists)
 	if helperExists == 0 {
+		helperHash, _ := HashPassword("helper")
 		db.Exec(`INSERT INTO USUARIOS (usuario, clave, activo, created_on, rol) VALUES (?, ?, 't', ?, 'helper')`,
-			"helper", hashPassword("helper"), time.Now().Format("2006-01-02 15:04:05"))
+			"helper", helperHash, time.Now().Format("2006-01-02 15:04:05"))
 	}
 
 	var hasRol int
@@ -364,6 +370,9 @@ func render(w http.ResponseWriter, r *http.Request, name string, data PageData) 
 	if rc, err := r.Cookie("role"); err == nil {
 		data.Role = rc.Value
 	}
+	tok := csrfToken()
+	data.CSRFToken = tok
+	http.SetCookie(w, &http.Cookie{Name: "csrf_token", Value: tok, Path: "/", HttpOnly: false})
 	var err error
 	if t, ok := pageTmpls[name]; ok {
 		err = t.Execute(w, data)

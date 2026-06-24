@@ -533,8 +533,13 @@ func handleUsuariosCreate(w http.ResponseWriter, r *http.Request) {
 	if pw == "" {
 		pw = u.Usuario
 	}
-	_, err := db.Exec("INSERT INTO USUARIOS (nombre_completo, direccion, telefono, usuario, clave, activo, created_on, correo, rol) VALUES (?,?,?,?,?,?,?,?,?)",
-		u.NombreCompleto, u.Direccion, u.Telefono, u.Usuario, hashPassword(pw), u.Activo, now(), u.Correo, u.Rol)
+	hash, err := HashPassword(pw)
+	if err != nil {
+		jsonErr(w, "Error al generar hash", 500)
+		return
+	}
+	_, err = db.Exec("INSERT INTO USUARIOS (nombre_completo, direccion, telefono, usuario, clave, activo, created_on, correo, rol) VALUES (?,?,?,?,?,?,?,?,?)",
+		u.NombreCompleto, u.Direccion, u.Telefono, u.Usuario, hash, u.Activo, now(), u.Correo, u.Rol)
 	if err != nil {
 		jsonErr(w, err.Error(), 400)
 		return
@@ -578,7 +583,12 @@ func handleUsuarioPassword(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, "La clave no puede estar vacia", 400)
 		return
 	}
-	_, err := db.Exec("UPDATE USUARIOS SET clave=? WHERE id=?", hashPassword(body.Clave), id)
+	hash, err := HashPassword(body.Clave)
+	if err != nil {
+		jsonErr(w, "Error al generar hash", 500)
+		return
+	}
+	_, err = db.Exec("UPDATE USUARIOS SET clave=? WHERE id=?", hash, id)
 	if err != nil {
 		jsonErr(w, err.Error(), 400)
 		return

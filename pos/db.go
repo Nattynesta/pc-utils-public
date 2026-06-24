@@ -1,9 +1,7 @@
 package main
 
 import (
-	"crypto/sha256"
 	"database/sql"
-	"fmt"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -206,11 +204,6 @@ type Pedido struct {
 	CompletadoOn     string  `json:"completado_on"`
 	CreadoPorNombre  string  `json:"creado_por_nombre"`
 	AsignadoANombre  string  `json:"asignado_a_nombre"`
-}
-
-func hashPassword(pw string) string {
-	h := sha256.Sum256([]byte(pw))
-	return fmt.Sprintf("%x", h)
 }
 
 func now() string {
