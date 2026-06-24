@@ -120,74 +120,6 @@
 .pos-mode-mobile .carrito-resumen .cr-total { font-weight:700; font-size:1.05rem; color:var(--success); }
 .pos-mode-mobile .carrito-resumen .cr-count { font-size:.85rem; color:var(--text3); }
 
-/* ===== CHAT SIDEBAR ===== */
-.chat-toggle-btn { position:relative; display:flex; align-items:center; gap:.3rem; padding:.45rem .8rem; border:1.5px solid var(--border); border-radius:8px; background:var(--bg2); font-size:.85rem; cursor:pointer; transition:all .15s; white-space:nowrap; color:var(--text2); }
-.chat-toggle-btn:hover { border-color:var(--primary); color:var(--primary); background:rgba(8,145,178,.1); }
-.chat-toggle-btn .ct-badge { display:none; position:absolute; top:-6px; right:-6px; min-width:18px; height:18px; border-radius:999px; background:var(--danger); color:white; font-size:.6rem; font-weight:700; align-items:center; justify-content:center; padding:0 .3rem; border:2px solid var(--bg2); }
-#chat-sidebar { position:fixed; right:0; top:3.5rem; bottom:0; width:340px; background:var(--bg2); border-left:1.5px solid var(--border); z-index:900; transform:translateX(100%); transition:transform .25s cubic-bezier(.4,0,.2,1); display:flex; flex-direction:column; box-shadow:-4px 0 20px rgba(0,0,0,.1); }
-#chat-sidebar.open { transform:translateX(0); }
-.cs-header { display:flex; align-items:center; justify-content:space-between; padding:.65rem 1rem; border-bottom:1px solid var(--border); flex-shrink:0; }
-.cs-header h3 { margin:0; font-size:.95rem; font-weight:600; display:flex; align-items:center; gap:.35rem; }
-.cs-header .cs-close { background:none; border:none; color:var(--text3); cursor:pointer; font-size:1.1rem; padding:.2rem; border-radius:6px; }
-.cs-header .cs-close:hover { background:var(--bg3); color:var(--text); }
-.cs-canales { flex:0 0 auto; max-height:40%; overflow-y:auto; border-bottom:1px solid var(--border); }
-.cs-canales .cc-item { display:flex; align-items:center; gap:.5rem; padding:.5rem .85rem; cursor:pointer; transition:all .1s; border-left:3px solid transparent; }
-.cs-canales .cc-item:hover { background:var(--bg3); }
-.cs-canales .cc-item.active { background:rgba(8,145,178,.1); border-left-color:var(--primary); }
-.cs-canales .cc-item .cc-icon { width:24px; text-align:center; color:var(--text3); font-size:1rem; flex-shrink:0; }
-.cs-canales .cc-item .cc-name { flex:1; font-size:.85rem; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.cs-canales .cc-item .cc-badge { min-width:20px; height:20px; border-radius:999px; background:var(--accent); color:white; font-size:.65rem; font-weight:700; display:flex; align-items:center; justify-content:center; padding:0 .35rem; }
-.cs-conversacion { flex:1; display:flex; flex-direction:column; min-height:0; }
-.cs-msgs-header { padding:.45rem .85rem; font-size:.75rem; font-weight:600; color:var(--text3); text-transform:uppercase; letter-spacing:.03em; border-bottom:1px solid var(--border); flex-shrink:0; background:var(--bg3); }
-.cs-msgs { flex:1; overflow-y:auto; padding:.5rem .65rem; display:flex; flex-direction:column; gap:.25rem; }
-.cs-empty { text-align:center; color:var(--text3); padding:2rem .5rem; font-size:.78rem; flex:1; display:flex; align-items:center; justify-content:center; }
-.cs-bottom { padding:.5rem .65rem; border-top:1px solid var(--border); display:flex; gap:.4rem; align-items:flex-end; flex-shrink:0; }
-.cs-bottom textarea { flex:1; resize:none; border:1.5px solid var(--border); border-radius:8px; padding:.45rem .65rem; font-size:.85rem; background:var(--bg3); color:var(--text); font-family:inherit; max-height:100px; min-height:36px; line-height:1.4; }
-.cs-bottom textarea:focus { outline:none; border-color:var(--primary); }
-.btn-voice { width:34px; height:34px; border-radius:8px; border:1.5px solid var(--border); background:var(--bg3); cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--text3); font-size:1rem; flex-shrink:0; transition:all .1s; }
-.btn-voice:hover { border-color:var(--danger); color:var(--danger); }
-.cs-bottom .cs-send { width:36px; height:36px; border-radius:8px; border:none; background:var(--accent); color:white; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:1.1rem; flex-shrink:0; transition:all .1s; }
-.cs-bottom .cs-send:hover { background:var(--primary-dark); }
-.cs-bottom .cs-send:active { transform:scale(.95); }
-
-/* FABs */
-#chat-fab, #cart-fab { cursor:grab; user-select:none; -webkit-user-select:none; touch-action:none; }
-#chat-fab:active, #cart-fab:active { cursor:grabbing; }
-#chat-fab { position:fixed; left:20px; bottom:90px; width:56px; height:56px; border-radius:50%; background:var(--accent); color:white; border:none; font-size:1.4rem; box-shadow:0 4px 15px rgba(0,0,0,.2); z-index:999; display:flex; align-items:center; justify-content:center; }
-#chat-fab:active { transform:scale(.95); }
-#chat-fab-badge { position:absolute; top:-3px; right:-3px; min-width:20px; height:20px; border-radius:999px; background:var(--danger); color:white; font-size:.6rem; font-weight:700; align-items:center; justify-content:center; padding:0 .35rem; border:2px solid var(--bg2); display:none; }
-#cart-fab { position:fixed; left:20px; bottom:20px; width:56px; height:56px; border-radius:50%; background:var(--primary); color:white; border:none; font-size:1.4rem; box-shadow:0 4px 15px rgba(0,0,0,.2); z-index:998; display:flex; align-items:center; justify-content:center; }
-#cart-fab:active { transform:scale(.95); }
-#cart-fab .badge { position:absolute; top:-3px; right:-3px; min-width:20px; height:20px; border-radius:999px; background:var(--danger); color:white; font-size:.6rem; font-weight:700; align-items:center; justify-content:center; padding:0 .35rem; border:2px solid var(--bg2); }
-
-.cb { display:flex; gap:.4rem; max-width:92%; margin-bottom:.15rem; }
-.cb-own { align-self:flex-end; flex-direction:row-reverse; }
-.cb-other { align-self:flex-start; }
-.cb-avatar { width:26px; height:26px; border-radius:50%; background:var(--accent); color:white; font-size:.65rem; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px; }
-.cb-body { padding:.35rem .55rem; border-radius:10px; font-size:.82rem; line-height:1.4; word-wrap:break-word; min-width:40px; }
-.cb-own .cb-body { background:var(--accent); color:white; border-bottom-right-radius:3px; }
-.cb-other .cb-body { background:var(--bg3); color:var(--text); border:1px solid var(--border); border-bottom-left-radius:3px; }
-.cb-user { font-size:.68rem; font-weight:600; margin-bottom:.1rem; opacity:.7; }
-.cb-text { white-space:pre-wrap; }
-.cb-time { font-size:.6rem; opacity:.6; text-align:right; margin-top:.15rem; }
-.cb-own .cb-time { color:rgba(255,255,255,.7); }
-.cb-audio-wrap { max-width:200px; }
-.cb-audio { width:100%; height:32px; border-radius:6px; }
-
-/* Voice recorder bar */
-.voice-recorder { display:none; align-items:center; gap:.5rem; padding:.5rem .65rem; background:#ef4444; color:white; font-size:.85rem; border-top:1px solid var(--border); flex-shrink:0; }
-.voice-recorder.open { display:flex; }
-#voice-timer { font-weight:700; font-size:.9rem; min-width:40px; }
-.vr-btn { background:rgba(255,255,255,.2); border:none; border-radius:6px; padding:.3rem .5rem; color:white; cursor:pointer; font-size:.85rem; }
-.vr-btn:hover { background:rgba(255,255,255,.35); }
-.vr-pulse { width:10px; height:10px; border-radius:50%; background:#fff; animation:vrPulse 1s ease-in-out infinite; }
-@keyframes vrPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(1.3)} }
-
-@media(max-width:768px) {
-  #chat-sidebar { width:100%; top:0; z-index:1000; }
-  .cs-canales { max-height:30%; }
-}
-
 /* ===== CART PANEL ===== */
 .cart-panel { flex-shrink:0; }
 .cart-header { padding:.8rem 1rem; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:flex-start; }
@@ -344,7 +276,6 @@
       <button id="sound-toggle" onclick="SoundManager.setMuted(!SoundManager.isMuted());SoundManager.updateIcon();" title="Sonido"><i class="ti ti-volume"></i></button>
       <button class="btn-ignore-stock" id="btn-ignore-stock" onclick="toggleIgnoreStock()" title="Ignorar stock agotado"><i class="ti ti-circle-off"></i><span> Stock</span></button>
       <button class="btn-off" onclick="sincronizarOFF(this)" title="Sincronizar OFF"><i class="ti ti-cloud-download"></i><span class="off-label"> OFF</span></button>
-      <button class="chat-toggle-btn" onclick="toggleChatSidebar()" title="Chat (Ctrl+Shift+C)"><i class="ti ti-message"></i> Chat <span class="ct-badge" id="chat-toggle-badge"></span></button>
     </div>
     <div class="dept-chips" id="dept-chips"></div>
     <div class="client-bar">
@@ -399,33 +330,6 @@
   <button id="cart-fab" onclick="toggleCart()" title="Carrito">
     <i class="ti ti-shopping-cart"></i><span class="badge" id="fab-count">0</span>
   </button>
-</div>
-
-<button id="chat-fab" title="Chat (Ctrl+Shift+C)"><i class="ti ti-message"></i><span id="chat-fab-badge"></span></button>
-
-<div id="chat-sidebar">
-  <div class="cs-header">
-    <h3><i class="ti ti-message"></i> Chat</h3>
-    <button class="cs-close" onclick="toggleChatSidebar()">&times;</button>
-  </div>
-  <div class="cs-canales" id="chat-canal-list"></div>
-  <div class="cs-conversacion">
-    <div class="cs-msgs-header" id="chat-header-title"><i class="ti ti-hash"></i> General</div>
-    <div class="cs-msgs" id="chat-mensajes">
-      <div class="cs-empty" id="chat-empty"><i class="ti ti-message-off" style="font-size:1.5rem;display:block;margin-bottom:.3rem;"></i>Sin mensajes</div>
-    </div>
-    <div class="voice-recorder" id="voice-recorder">
-      <span class="vr-pulse"></span>
-      <span id="voice-timer">0:00</span>
-      <button class="vr-btn" id="btn-cancel-voice"><i class="ti ti-x"></i></button>
-      <button class="vr-btn" id="btn-stop-voice" style="background:rgba(255,255,255,.3);font-weight:600;"><i class="ti ti-check"></i> Enviar</button>
-    </div>
-    <div class="cs-bottom" id="chat-bottom">
-      <button class="btn-voice" id="btn-voice" title="Nota de voz"><i class="ti ti-microphone"></i></button>
-      <textarea id="chat-input" placeholder="Escribe un mensaje..." rows="1"></textarea>
-      <button class="cs-send" id="btn-send"><i class="ti ti-send"></i></button>
-    </div>
-  </div>
 </div>
 
 <div class="nc-modal" id="new-client-modal">
@@ -492,7 +396,7 @@
 <script src="/static/js/shortcuts.js"></script>
 <script src="/static/js/sounds.js"></script>
 <script src="/static/js/search.js"></script>
-<script src="/static/pos-chat.js"></script>
+
 
 <script>
 var allProductos = [], departamentos = [], articulos = [], deptColors = {};

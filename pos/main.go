@@ -191,16 +191,6 @@ func main() {
 	mux.HandleFunc("GET /api/reportes/ventas-diarias", handleReportesVentasDiarias)
 	mux.HandleFunc("GET /api/reportes/productos-mas-vendidos", handleReportesTopProductos)
 	mux.HandleFunc("POST /api/admin/reset-ventas", withAdmin(handleAdminResetVentas))
-	mux.HandleFunc("GET /api/chat/canales", handleChatCanales)
-	mux.HandleFunc("GET /api/chat/mensajes", handleChatMensajes)
-	mux.HandleFunc("POST /api/chat/mensajes", handleChatMensajes)
-	mux.HandleFunc("DELETE /api/chat/mensajes", handleChatMensajes)
-	mux.HandleFunc("PUT /api/chat/leido", handleChatLeido)
-	mux.HandleFunc("GET /api/chat/usuarios", handleChatUsuarios)
-	mux.HandleFunc("GET /api/chat/online", handleChatOnline)
-	mux.HandleFunc("POST /api/chat/upload-audio", handleChatUploadAudio)
-	mux.HandleFunc("GET /api/chat/ws", handleChatWS)
-
 	mux.Handle("GET /audio/", http.StripPrefix("/audio/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		home, _ := os.UserHomeDir()
 		audioDir := filepath.Join(home, ".abarrotes-pdv", "audio")
@@ -233,14 +223,11 @@ func main() {
 	mux.HandleFunc("GET /usuarios", withAdmin(handleUsuariosPage))
 	mux.HandleFunc("GET /departamentos", withAdmin(handleDepartamentosPage))
 	mux.HandleFunc("GET /pedidos", handlePedidosPage)
-	mux.HandleFunc("GET /chat", handleChatPage)
 
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
-
-	go runWSHub()
 
 	addr := fmt.Sprintf("0.0.0.0:%s", port)
 	log.Printf("Abarrotes PDV corriendo en http://localhost%s", addr)
@@ -326,36 +313,6 @@ func migrate(db *sql.DB) error {
 				return fmt.Errorf("error seeding: %q: %w", stmt[:min(len(stmt), 60)], err)
 			}
 		}
-	}
-
-	// Chat tables
-	db.Exec("CREATE TABLE IF NOT EXISTS chat_canales (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT NOT NULL UNIQUE, icono TEXT DEFAULT 'hash', descripcion TEXT DEFAULT '', created_on TEXT DEFAULT (datetime('now','localtime')))")
-	db.Exec("CREATE TABLE IF NOT EXISTS chat_leidos (usuario_id INTEGER NOT NULL, canal_id INTEGER NOT NULL, ultimo_leido_id INTEGER DEFAULT 0, PRIMARY KEY (usuario_id, canal_id), FOREIGN KEY (usuario_id) REFERENCES USUARIOS(id), FOREIGN KEY (canal_id) REFERENCES chat_canales(id))")
-
-	var hasCanalID int
-	db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('CHAT_MESSAGES') WHERE name='canal_id'").Scan(&hasCanalID)
-	if hasCanalID == 0 {
-		db.Exec("ALTER TABLE CHAT_MESSAGES ADD COLUMN canal_id INTEGER DEFAULT 1")
-	}
-	var hasTipo int
-	db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('CHAT_MESSAGES') WHERE name='tipo'").Scan(&hasTipo)
-	if hasTipo == 0 {
-		db.Exec("ALTER TABLE CHAT_MESSAGES ADD COLUMN tipo TEXT DEFAULT ''")
-	}
-	var hasDatosJSON int
-	db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('CHAT_MESSAGES') WHERE name='datos_json'").Scan(&hasDatosJSON)
-	if hasDatosJSON == 0 {
-		db.Exec("ALTER TABLE CHAT_MESSAGES ADD COLUMN datos_json TEXT DEFAULT ''")
-	}
-
-	// Seed default channels
-	var canalCount int
-	db.QueryRow("SELECT COUNT(*) FROM chat_canales").Scan(&canalCount)
-	if canalCount == 0 {
-		db.Exec("INSERT INTO chat_canales (nombre, icono, descripcion) VALUES ('General', 'hash', 'Chat general del equipo')")
-		db.Exec("INSERT INTO chat_canales (nombre, icono, descripcion) VALUES ('Ventas', 'shopping-cart', 'Notificaciones y discusión de ventas')")
-		db.Exec("INSERT INTO chat_canales (nombre, icono, descripcion) VALUES ('Inventario', 'package', 'Movimientos y ajustes de inventario')")
-		db.Exec("INSERT INTO chat_canales (nombre, icono, descripcion) VALUES ('Admin', 'settings', 'Solo administradores')")
 	}
 
 	// FTS5 search index
