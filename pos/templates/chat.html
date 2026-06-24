@@ -39,7 +39,7 @@
 </div>
 
 <script>
-var currentUserId = {{.UserID}}, ws, msgId = 0, seenIds = new Set();
+var currentUserId = {{.UserID}}, ws;
 
 function formatTime(ts){
   if(!ts) return '';
@@ -53,55 +53,30 @@ function escapeHtml(s){
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function normalizeMsg(m){
-  return {
-    user_id: m.user_id || m.usuario_id || 0,
-    username: m.username || m.usuario || '?',
-    message: m.message || m.mensaje || m.text || '',
-    created: m.created || m.created_on || m.ts || ''
-  };
-}
-
-function msgKey(m){
-  return m.message + '_' + m.username + '_' + m.created;
-}
-
 function renderMessage(m){
-  var n = normalizeMsg(m);
-  var isOwn = n.user_id === currentUserId;
-  var avatar = n.username.charAt(0).toUpperCase();
+  var isOwn = (m.user_id||m.usuario_id||0) === currentUserId;
+  var u = m.username || m.usuario || '?';
+  var msg = m.message || m.mensaje || '';
+  var t = m.created || m.created_on || '';
+  var avatar = u.charAt(0).toUpperCase();
   return '<div class="chat-message '+(isOwn?'own':'other')+'">'+
     '<div class="chat-message-bubble">'+
-      '<div>'+escapeHtml(n.message)+'</div>'+
+      '<div>'+escapeHtml(msg)+'</div>'+
       '<div class="chat-message-meta">'+
         '<span class="chat-message-avatar">'+avatar+'</span>'+
-        '<span class="chat-message-user" style="font-weight:600;">'+escapeHtml(n.username)+'</span>'+
-        '<span class="chat-message-time">'+formatTime(n.created)+'</span>'+
+        '<span class="chat-message-user" style="font-weight:600;">'+escapeHtml(u)+'</span>'+
+        '<span class="chat-message-time">'+formatTime(t)+'</span>'+
       '</div>'+
     '</div>'+
   '</div>';
 }
 
 function appendMessage(m){
-  var n = normalizeMsg(m);
-  var key = msgKey(n);
-  if(seenIds.has(key)) return;
-  seenIds.add(key);
   var cont = document.getElementById('chat-messages');
   var empty = document.getElementById('chat-empty');
   empty.style.display = 'none';
   cont.insertAdjacentHTML('beforeend', renderMessage(m));
   cont.scrollTop = cont.scrollHeight;
-}
-
-function setStatus(connected){
-  var el = document.getElementById('online-count');
-  if(connected){
-    el.textContent = el.textContent.replace('● Desconectado', '');
-    if(el.textContent.indexOf('●') === -1 && el.textContent.indexOf('en línea') === -1) el.textContent = 'Conectado';
-  } else {
-    el.innerHTML = '● Desconectado';
-  }
 }
 
 function cargarMensajes(){
@@ -112,11 +87,9 @@ function cargarMensajes(){
       empty.style.display = 'block'; cont.innerHTML = ''; cont.appendChild(empty); return;
     }
     empty.style.display = 'none';
-    seenIds.clear();
-    cont.innerHTML = '';
-    msgs.reverse().forEach(function(m){ appendMessage(m); });
+    cont.innerHTML = msgs.reverse().map(function(m){ return renderMessage(m); }).join('');
     cont.scrollTop = cont.scrollHeight;
-  }).catch(function(){});
+  }).catch(function(e){ console.warn('cargarMensajes error:', e); });
 }
 
 function enviarMensaje(){
@@ -126,25 +99,22 @@ function enviarMensaje(){
   input.value = '';
 
   if(ws && ws.readyState === WebSocket.OPEN){
-    var id = 'msg_' + (++msgId);
-    ws.send(JSON.stringify({type:'chat', id:id, payload:texto}));
+    ws.send(JSON.stringify({type:'chat', id:'msg_'+Date.now(), payload:texto}));
     return;
   }
 
-  // Fallback: POST + optimistic render
   fetch('/api/chat/mensajes', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify({mensaje:texto})
   }).then(function(r){return r.json();}).then(function(){
-    // Broadcast via WS should arrive; if WS never connects, poll
-  }).catch(function(){});
+    cargarMensajes();
+  }).catch(function(e){ console.warn('enviarMensaje error:', e); });
 }
 
 function actualizarOnline(){
   fetch('/api/chat/online').then(function(r){return r.json();}).then(function(d){
-    var el = document.getElementById('online-count');
-    el.textContent = d.count+' usuario'+(d.count!==1?'s':'')+' en línea';
+    document.getElementById('online-count').textContent = d.count+' usuario'+(d.count!==1?'s':'')+' en línea';
   }).catch(function(){});
 }
 
@@ -152,32 +122,19 @@ function conectarWS(){
   var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   var session = document.cookie.split('; ').find(function(c){return c.startsWith('session=');});
   var token = session ? session.split('=')[1] : '';
-  var url = proto + '//' + location.host + '/api/chat/ws';
-  ws = new WebSocket(url);
+  ws = new WebSocket(proto + '//' + location.host + '/api/chat/ws');
   ws.onopen = function(){
     if(token) ws.send(JSON.stringify({type:'auth', id:'auth_1', token:token}));
-    setStatus(true);
   };
   ws.onmessage = function(e){
     var m = JSON.parse(e.data);
-    switch(m.type){
-      case 'chat':
-        appendMessage(m);
-        if(m.id) ws.send(JSON.stringify({type:'ack', id:m.id, status:'received'}));
-        break;
-      case 'ack':
-        break;
-      case 'error':
-        console.warn('WS error:', m.error, m.id);
-        break;
-    }
+    if(m.type === 'chat') appendMessage(m);
   };
   ws.onclose = function(){
-    setStatus(false);
     setTimeout(conectarWS, 2000);
   };
   ws.onerror = function(){
-    setStatus(false);
+    ws.close();
   };
 }
 
@@ -188,6 +145,5 @@ setInterval(function(){
   if(ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({type:'ping', id:'ping_'+Date.now()}));
 }, 25000);
 setInterval(actualizarOnline, 30000);
-window.addEventListener('beforeunload', function(){ if(ws) ws.close(); });
 </script>
 {{end}}
