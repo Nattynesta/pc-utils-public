@@ -1640,24 +1640,7 @@ func handleChatOnline(w http.ResponseWriter, r *http.Request) {
 }
 
 var wsUpgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		origin := r.Header.Get("Origin")
-		if origin == "" {
-			return true
-		}
-		allowed := []string{
-			"http://localhost:8080",
-			"http://127.0.0.1:8080",
-			"http://100.66.83.37:8080",
-			"http://100.92.186.120:8080",
-		}
-		for _, a := range allowed {
-			if origin == a {
-				return true
-			}
-		}
-		return false
-	},
+	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
 type wsClient struct {
@@ -1865,7 +1848,7 @@ func handleChatMensajes(w http.ResponseWriter, r *http.Request) {
 		for rows.Next() {
 			var id, uid int; var msg, created, usuario string
 			rows.Scan(&id, &uid, &msg, &created, &usuario)
-			msgs = append(msgs, map[string]interface{}{"id":id, "user_id":uid, "message":msg, "created":created, "username":usuario})
+			msgs = append(msgs, map[string]interface{}{"id":id, "user_id":uid, "message":msg, "created":created, "username":usuario, "type":"chat"})
 		}
 		if msgs == nil { msgs = []map[string]interface{}{} }
 		jsonResp(w, msgs)
@@ -1886,7 +1869,7 @@ func handleChatMensajes(w http.ResponseWriter, r *http.Request) {
 		var usuario string
 		db.QueryRow("SELECT usuario FROM USUARIOS WHERE id=?", uid).Scan(&usuario)
 		msgData, _ := json.Marshal(map[string]interface{}{
-			"id": 0, "usuario_id": uid, "mensaje": body.Mensaje, "created_on": msgCreated, "usuario": usuario,
+			"type":"chat", "id": "", "user_id": uid, "username": usuario, "message": body.Mensaje, "created": msgCreated,
 		})
 		wsBroadcast <- msgData
 		jsonResp(w, map[string]string{"ok":"enviado"})

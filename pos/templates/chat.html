@@ -39,38 +39,69 @@
 </div>
 
 <script>
-var currentUserId = {{.UserID}}, ws, msgId = 0, pending = {};
+var currentUserId = {{.UserID}}, ws, msgId = 0, seenIds = new Set();
 
 function formatTime(ts){
-  var d = new Date(ts.replace(' ', 'T') + 'Z');
-  return d.toLocaleTimeString('es-MX', {hour:'2-digit', minute:'2-digit', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone});
+  if(!ts) return '';
+  var m = ts.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+  if(!m) return ts;
+  var d = new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5]);
+  return d.toLocaleTimeString('es-MX', {hour:'2-digit', minute:'2-digit'});
 }
 
 function escapeHtml(s){
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+function normalizeMsg(m){
+  return {
+    user_id: m.user_id || m.usuario_id || 0,
+    username: m.username || m.usuario || '?',
+    message: m.message || m.mensaje || m.text || '',
+    created: m.created || m.created_on || m.ts || ''
+  };
+}
+
+function msgKey(m){
+  return m.message + '_' + m.username + '_' + m.created;
+}
+
 function renderMessage(m){
-  var isOwn = m.user_id === currentUserId;
-  var avatar = m.username.charAt(0).toUpperCase();
+  var n = normalizeMsg(m);
+  var isOwn = n.user_id === currentUserId;
+  var avatar = n.username.charAt(0).toUpperCase();
   return '<div class="chat-message '+(isOwn?'own':'other')+'">'+
     '<div class="chat-message-bubble">'+
-      '<div>'+escapeHtml(m.message)+'</div>'+
+      '<div>'+escapeHtml(n.message)+'</div>'+
       '<div class="chat-message-meta">'+
         '<span class="chat-message-avatar">'+avatar+'</span>'+
-        '<span class="chat-message-user" style="font-weight:600;">'+escapeHtml(m.username)+'</span>'+
-        '<span class="chat-message-time">'+formatTime(m.created)+'</span>'+
+        '<span class="chat-message-user" style="font-weight:600;">'+escapeHtml(n.username)+'</span>'+
+        '<span class="chat-message-time">'+formatTime(n.created)+'</span>'+
       '</div>'+
     '</div>'+
   '</div>';
 }
 
 function appendMessage(m){
+  var n = normalizeMsg(m);
+  var key = msgKey(n);
+  if(seenIds.has(key)) return;
+  seenIds.add(key);
   var cont = document.getElementById('chat-messages');
   var empty = document.getElementById('chat-empty');
   empty.style.display = 'none';
   cont.insertAdjacentHTML('beforeend', renderMessage(m));
   cont.scrollTop = cont.scrollHeight;
+}
+
+function setStatus(connected){
+  var el = document.getElementById('online-count');
+  if(connected){
+    el.textContent = el.textContent.replace('● Desconectado', '');
+    if(el.textContent.indexOf('●') === -1 && el.textContent.indexOf('en línea') === -1) el.textContent = 'Conectado';
+  } else {
+    el.innerHTML = '● Desconectado';
+  }
 }
 
 function cargarMensajes(){
@@ -81,7 +112,9 @@ function cargarMensajes(){
       empty.style.display = 'block'; cont.innerHTML = ''; cont.appendChild(empty); return;
     }
     empty.style.display = 'none';
-    cont.innerHTML = msgs.reverse().map(renderMessage).join('');
+    seenIds.clear();
+    cont.innerHTML = '';
+    msgs.reverse().forEach(function(m){ appendMessage(m); });
     cont.scrollTop = cont.scrollHeight;
   }).catch(function(){});
 }
@@ -89,17 +122,30 @@ function cargarMensajes(){
 function enviarMensaje(){
   var input = document.getElementById('chat-input');
   var texto = input.value.trim();
-  if(!texto || !ws || ws.readyState !== WebSocket.OPEN) return;
+  if(!texto) return;
   input.value = '';
-  var id = 'msg_' + (++msgId);
-  ws.send(JSON.stringify({type:'chat', id:id, payload:texto}));
-  pending[id] = texto;
+
+  if(ws && ws.readyState === WebSocket.OPEN){
+    var id = 'msg_' + (++msgId);
+    ws.send(JSON.stringify({type:'chat', id:id, payload:texto}));
+    return;
+  }
+
+  // Fallback: POST + optimistic render
+  fetch('/api/chat/mensajes', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({mensaje:texto})
+  }).then(function(r){return r.json();}).then(function(){
+    // Broadcast via WS should arrive; if WS never connects, poll
+  }).catch(function(){});
 }
 
 function actualizarOnline(){
   fetch('/api/chat/online').then(function(r){return r.json();}).then(function(d){
-    document.getElementById('online-count').textContent = d.count+' usuario'+(d.count!==1?'s':'')+' en línea';
-  });
+    var el = document.getElementById('online-count');
+    el.textContent = d.count+' usuario'+(d.count!==1?'s':'')+' en línea';
+  }).catch(function(){});
 }
 
 function conectarWS(){
@@ -109,8 +155,8 @@ function conectarWS(){
   var url = proto + '//' + location.host + '/api/chat/ws';
   ws = new WebSocket(url);
   ws.onopen = function(){
-    console.log('WS connected');
     if(token) ws.send(JSON.stringify({type:'auth', id:'auth_1', token:token}));
+    setStatus(true);
   };
   ws.onmessage = function(e){
     var m = JSON.parse(e.data);
@@ -120,7 +166,6 @@ function conectarWS(){
         if(m.id) ws.send(JSON.stringify({type:'ack', id:m.id, status:'received'}));
         break;
       case 'ack':
-        delete pending[m.id];
         break;
       case 'error':
         console.warn('WS error:', m.error, m.id);
@@ -128,10 +173,11 @@ function conectarWS(){
     }
   };
   ws.onclose = function(){
+    setStatus(false);
     setTimeout(conectarWS, 2000);
   };
   ws.onerror = function(){
-    ws.close();
+    setStatus(false);
   };
 }
 
