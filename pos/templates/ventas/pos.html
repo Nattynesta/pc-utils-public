@@ -610,7 +610,7 @@ function renderProductos(lista){
 
 function renderProductCard(p){
   var c=deptColors[p.dept]||'#6b7280',img=p.imagen_local||p.off_image_url||p.off_image_small||'',th=thumbUrl(img),has=!!th;
-  var imgHtml = has ? '<img src="'+th+'" alt="'+(p.descripcion||p.codigo)+'" loading="lazy" onerror="this.style.display=\'none\'">' : '<i class="'+iconoProducto(p.descripcion)+'" style="font-size:2rem;color:white;opacity:.8;"></i>';
+  var imgHtml = has ? '<img src="'+th+'" alt="'+(p.descripcion||p.codigo)+'" loading="lazy" onerror="this.onerror=null;this.src=\''+img+'\'">' : '<i class="'+iconoProducto(p.descripcion)+'" style="font-size:2rem;color:white;opacity:.8;"></i>';
   var sinStock = p.dinventario <= 0;
   var stk = sinStock ? '<span class="stock-badge out">S/Stock</span>' : (p.dinventario<=5 ? '<span class="stock-badge low" style="font-size:.6rem;">'+p.dinventario+'</span>' : '');
   var ex = articulos.find(function(a){return a.producto_codigo===p.codigo;});
@@ -690,7 +690,8 @@ function actualizarCarrito(){
   items.innerHTML = articulos.map(function(a,i){
     var p = allProductos.find(function(x){return x.codigo===a.producto_codigo;});
     var img = p ? thumbUrl(p.imagen_local||p.off_image_url||p.off_image_small||'') : '';
-    var th = img ? '<img src="'+img+'" class="ci-thumb">' : '<div class="ci-thumb-fallback" style="background:'+(p?deptColors[p.dept]||'#6b7280':'#6b7280')+'"><i class="'+iconoProducto(a.producto_nombre)+'"></i></div>';
+    var fullImg = p ? (p.imagen_local||p.off_image_url||p.off_image_small||'') : '';
+    var th = img ? '<img src="'+img+'" class="ci-thumb" onerror="this.onerror=null;this.src=\''+fullImg+'\'">' : '<div class="ci-thumb-fallback" style="background:'+(p?deptColors[p.dept]||'#6b7280':'#6b7280')+'"><i class="'+iconoProducto(a.producto_nombre)+'"></i></div>';
     return '<div class="cart-item">'+th+'<div class="ci-info"><div class="ci-name">'+a.producto_nombre+'</div><div class="ci-subtotal">$'+(a.cantidad*a.precio_usado).toFixed(2)+' <span style="color:var(--text3);font-size:.7rem;">('+a.producto_codigo+')</span></div></div><div class="ci-qty"><button onclick="cambiarCantidad('+i+',-1)">&minus;</button><span>'+a.cantidad+'</span><button onclick="cambiarCantidad('+i+',1)">+</button></div><span class="ci-remove" onclick="eliminarArticulo('+i+')">&times;</span></div>';
   }).join('');
 }

@@ -240,8 +240,8 @@ function renderGrid(){
     var asignado = p.asignado_a_nombre ? '<span style="font-size:.6rem;color:#6b7280;display:flex;align-items:center;gap:.2rem;"><i class="ti ti-user-check"></i> '+p.asignado_a_nombre+'</span>' : '';
 
     var itemsHtml = items.slice(0,4).map(function(it){
-      var img = thumbUrl(it.imagen)||'';
-      var im = img ? '<img src="'+img+'" loading="lazy">' : '<div style="width:28px;height:28px;border-radius:5px;background:#2d2d44;display:flex;align-items:center;justify-content:center;font-size:.55rem;color:#6b7280;"><i class="ti ti-box"></i></div>';
+      var th = thumbUrl(it.imagen);
+      var im = th ? '<img src="'+th+'" loading="lazy" onerror="this.onerror=null;this.src=\''+(it.imagen||'')+'\'">' : '<div style="width:28px;height:28px;border-radius:5px;background:#2d2d44;display:flex;align-items:center;justify-content:center;font-size:.55rem;color:#6b7280;"><i class="ti ti-box"></i></div>';
       return '<div class="k-item">'+im+'<span class="k-item-name">'+it.nombre+'</span><span class="k-item-qty">x'+it.cantidad+'</span></div>';
     }).join('');
     var extra = items.length > 4 ? '<div style="font-size:.65rem;color:#6b7280;padding:.2rem .5rem;">+'+(items.length-4)+' más</div>' : '';
