@@ -332,7 +332,6 @@ func createPerformanceIndexes(db *sql.DB) {
 		"CREATE INDEX IF NOT EXISTS idx_ventas_ticket ON VENTAS(ticket_id)",
 		"CREATE INDEX IF NOT EXISTS idx_ventas_producto ON VENTAS(producto_codigo)",
 		"CREATE INDEX IF NOT EXISTS idx_productos_categoria ON PRODUCTOS(categorias)",
-		"CREATE INDEX IF NOT EXISTS idx_productos_activo ON PRODUCTOS(activo)",
 		"CREATE INDEX IF NOT EXISTS idx_clientes_telefono ON CLIENTES(telefono)",
 		"CREATE INDEX IF NOT EXISTS idx_audit_fecha ON audit_log(created_at)",
 		"CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id)",
