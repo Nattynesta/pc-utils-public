@@ -3,7 +3,6 @@ package main
 import (
 	"log/slog"
 	"net/http"
-	"strconv"
 )
 
 type PageData struct {
@@ -72,10 +71,14 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		render(w, r, "login.html", PageData{Title: "Iniciar Sesion", Error: "Usuario o clave incorrectos"})
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: "session", Value: user, Path: "/"})
-	http.SetCookie(w, &http.Cookie{Name: "user_id", Value: strconv.Itoa(id), Path: "/"})
-	http.SetCookie(w, &http.Cookie{Name: "role", Value: rol, Path: "/"})
-	http.SetCookie(w, &http.Cookie{Name: "csrf_token", Value: csrfToken(), Path: "/", HttpOnly: false})
+	sessionToken, err := createSession(db, id, rol)
+	if err != nil {
+		slog.Error("session creation failed", "err", err)
+		render(w, r, "login.html", PageData{Title: "Iniciar Sesion", Error: "Error interno"})
+		return
+	}
+	http.SetCookie(w, &http.Cookie{Name: "session", Value: sessionToken, Path: "/", HttpOnly: true, Secure: false, SameSite: http.SameSiteStrictMode})
+	http.SetCookie(w, &http.Cookie{Name: "csrf_token", Value: csrfToken(sessionToken), Path: "/", HttpOnly: false, Secure: false, SameSite: http.SameSiteStrictMode})
 	if rol == "helper" {
 		http.Redirect(w, r, "/ventas/pos", http.StatusSeeOther)
 	} else {
@@ -84,8 +87,11 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleLogout(w http.ResponseWriter, r *http.Request) {
+	if cookie, err := r.Cookie("session"); err == nil {
+		deleteSession(db, cookie.Value)
+	}
 	http.SetCookie(w, &http.Cookie{Name: "session", Value: "", Path: "/", MaxAge: -1})
-	http.SetCookie(w, &http.Cookie{Name: "role", Value: "", Path: "/", MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: "csrf_token", Value: "", Path: "/", MaxAge: -1})
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 

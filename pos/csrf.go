@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 var csrfKey []byte
@@ -34,9 +35,10 @@ func initCSRF() error {
 	return nil
 }
 
-func csrfToken() string {
+func csrfToken(sessionID string) string {
 	mac := hmac.New(sha256.New, csrfKey)
-	mac.Write([]byte("csrf-token"))
+	mac.Write([]byte(sessionID))
+	mac.Write([]byte(time.Now().Format("2006-01-02")))
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
@@ -44,10 +46,15 @@ func validateCSRF(r *http.Request) bool {
 	if r.Method == "GET" || r.Method == "HEAD" || r.Method == "OPTIONS" {
 		return true
 	}
-	cookie, err := r.Cookie("csrf_token")
+	if r.URL.Path == "/login" {
+		return true
+	}
+	sessionCookie, err := r.Cookie("session")
 	if err != nil {
 		return false
 	}
+	expected := csrfToken(sessionCookie.Value)
+
 	token := r.FormValue("csrf_token")
 	if token == "" {
 		token = r.Header.Get("X-CSRF-Token")
@@ -55,7 +62,7 @@ func validateCSRF(r *http.Request) bool {
 	if token == "" {
 		return false
 	}
-	return hmac.Equal([]byte(cookie.Value), []byte(token))
+	return hmac.Equal([]byte(expected), []byte(token))
 }
 
 func withCSRF(next http.Handler) http.Handler {

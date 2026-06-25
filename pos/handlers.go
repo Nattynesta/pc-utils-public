@@ -661,9 +661,8 @@ func handleUsuarioPassword(w http.ResponseWriter, r *http.Request) {
 // --- Pedidos ---
 
 func handlePedidosList(w http.ResponseWriter, r *http.Request) {
-	roleCookie, _ := r.Cookie("role")
-	userCookie, _ := r.Cookie("session")
-	isAdmin := roleCookie != nil && roleCookie.Value == "admin"
+	isAdmin := roleFromContext(r.Context()) == "admin"
+	uid := userIDFromContext(r.Context())
 
 	order := ` ORDER BY
 		CASE p.prioridad WHEN 'alta' THEN 1 WHEN 'media' THEN 2 WHEN 'baja' THEN 3 END,
@@ -681,10 +680,6 @@ func handlePedidosList(w http.ResponseWriter, r *http.Request) {
 	if isAdmin {
 		rows, err = db.Query(q + order)
 	} else {
-		var uid int
-		if userCookie != nil {
-			db.QueryRow("SELECT id FROM USUARIOS WHERE usuario=?", userCookie.Value).Scan(&uid)
-		}
 		rows, err = db.Query(q+` WHERE p.estado IN ('pendiente','en_proceso') OR p.asignado_a_id = ? OR p.creado_por_id = ?`+order, uid, uid)
 	}
 	if err != nil {
@@ -702,11 +697,7 @@ func handlePedidosList(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlePedidosCreate(w http.ResponseWriter, r *http.Request) {
-	userCookie, _ := r.Cookie("session")
-	var usuarioID int
-	if userCookie != nil {
-		db.QueryRow("SELECT id FROM USUARIOS WHERE usuario=?", userCookie.Value).Scan(&usuarioID)
-	}
+	usuarioID := userIDFromContext(r.Context())
 	if usuarioID == 0 {
 		jsonErr(w, "Usuario no encontrado", 400)
 		return
@@ -741,14 +732,8 @@ func handlePedidosAsignar(w http.ResponseWriter, r *http.Request) {
 	}
 	json.NewDecoder(r.Body).Decode(&body)
 
-	sessionCookie, _ := r.Cookie("session")
-	roleCookie, _ := r.Cookie("role")
-	var usuarioID int
-	if sessionCookie != nil {
-		db.QueryRow("SELECT id FROM USUARIOS WHERE usuario=?", sessionCookie.Value).Scan(&usuarioID)
-	}
-
-	isAdmin := roleCookie != nil && roleCookie.Value == "admin"
+	usuarioID := userIDFromContext(r.Context())
+	isAdmin := roleFromContext(r.Context()) == "admin"
 
 	// Non-admin can only self-assign
 	targetID := body.AsignadoAID
@@ -784,11 +769,7 @@ func handlePedidosEstado(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sessionCookie, _ := r.Cookie("session")
-	var usuarioID int
-	if sessionCookie != nil {
-		db.QueryRow("SELECT id FROM USUARIOS WHERE usuario=?", sessionCookie.Value).Scan(&usuarioID)
-	}
+	usuarioID := userIDFromContext(r.Context())
 
 	// If completado, create a credit VENTATICKETS
 	if body.Estado == "completado" {
@@ -1013,6 +994,8 @@ func handleOperacionCerrar(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, err.Error(), 400)
 		return
 	}
+	oid, _ := strconv.Atoi(id)
+	logAudit(db, getUserIDForAudit(r), "caja_closed", "operacion", oid, "", r.RemoteAddr)
 	jsonResp(w, map[string]string{"ok": "Caja cerrada"})
 }
 
@@ -1306,6 +1289,7 @@ func handleTicketCobrar(w http.ResponseWriter, r *http.Request) {
 		total, ingresosEfectivo, ganancia, operacionID)
 
 	tx.Commit()
+	logAudit(db, getUserIDForAudit(r), "ticket_paid", "ticket", tid, fmt.Sprintf("Monto: %.2f, forma: %s", total, formaPago), r.RemoteAddr)
 	jsonResp(w, map[string]string{"ok": "Cobro exitoso", "cambio": fmt.Sprintf("%.2f", cambioEfectivo), "total_pagado": fmt.Sprintf("%.2f", sumaMontos), "ticket_id": id})
 }
 
@@ -1413,6 +1397,8 @@ func handleTicketCancelar(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, err.Error(), 400)
 		return
 	}
+	tid, _ := strconv.Atoi(id)
+	logAudit(db, getUserIDForAudit(r), "ticket_cancelled", "ticket", tid, "Cancelado por usuario", r.RemoteAddr)
 	jsonResp(w, map[string]string{"ok": "Ticket cancelado"})
 }
 
@@ -1438,11 +1424,7 @@ func handleTicketActualizarPrioridad(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleTicketDelete(w http.ResponseWriter, r *http.Request) {
-	sessionCookie, _ := r.Cookie("session")
-	var usuarioID int
-	if sessionCookie != nil {
-		db.QueryRow("SELECT id FROM USUARIOS WHERE usuario=?", sessionCookie.Value).Scan(&usuarioID)
-	}
+	usuarioID := userIDFromContext(r.Context())
 	if !isAdmin(r) {
 		var cajeroID int
 		db.QueryRow("SELECT cajero_id FROM VENTATICKETS WHERE id=?", r.PathValue("id")).Scan(&cajeroID)
@@ -1466,6 +1448,8 @@ func handleTicketDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tx.Commit()
+	tid, _ := strconv.Atoi(id)
+	logAudit(db, usuarioID, "ticket_deleted", "ticket", tid, "Ticket eliminado", r.RemoteAddr)
 	jsonResp(w, map[string]string{"ok": "Ticket eliminado"})
 }
 
@@ -1577,6 +1561,7 @@ func handleInventarioAjustar(w http.ResponseWriter, r *http.Request) {
 	tx.Exec(`INSERT INTO HISTORIAL_INVENTARIO (usuario_id, cuando_fue, tipo, habia, cantidad, codigo_producto, caja_id) VALUES (?,?,?,?,?,?,?)`,
 		req.UsuarioID, now(), req.Tipo, habia, req.Cantidad, req.CodigoProducto, req.CajaID)
 	tx.Commit()
+	logAudit(db, req.UsuarioID, "inventory_adjusted", "product", 0, fmt.Sprintf("Producto: %s, tipo: %s, cantidad: %.2f", req.CodigoProducto, req.Tipo, req.Cantidad), r.RemoteAddr)
 
 	jsonResp(w, map[string]string{"ok": "Inventario ajustado"})
 }
@@ -1827,6 +1812,7 @@ func handleReportesTopProductos(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleAdminResetVentas(w http.ResponseWriter, r *http.Request) {
+	logAudit(db, getUserIDForAudit(r), "admin_reset_ventas", "system", 0, "Reset completo de ventas, tickets y pedidos", r.RemoteAddr)
 	_, _ = db.Exec("DELETE FROM VENTAS")
 	_, _ = db.Exec("DELETE FROM VENTATICKETS_ARTICULOS")
 	_, _ = db.Exec("DELETE FROM PEDIDOS_LOG")

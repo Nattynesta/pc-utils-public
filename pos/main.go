@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"embed"
 	"encoding/json"
@@ -315,6 +316,9 @@ func migrate(db *sql.DB) error {
 		}
 	}
 
+	initSessionsTable(db)
+	initAuditTable(db)
+
 	// FTS5 search index
 	var hasFTS int
 	db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='productos_fts'").Scan(&hasFTS)
@@ -329,9 +333,17 @@ func migrate(db *sql.DB) error {
 
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := r.Header.Get("Origin")
+		allowed := map[string]bool{
+			"http://localhost:8080": true,
+			"http://127.0.0.1:8080": true,
+		}
+		if allowed[origin] {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-CSRF-Token")
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(200)
 			return
@@ -342,23 +354,46 @@ func withCORS(next http.Handler) http.Handler {
 
 func withAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/static/") || strings.HasPrefix(r.URL.Path, "/login") || strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/audio/") {
+		if strings.HasPrefix(r.URL.Path, "/static/") || strings.HasPrefix(r.URL.Path, "/login") || strings.HasPrefix(r.URL.Path, "/audio/") {
 			next.ServeHTTP(w, r)
 			return
 		}
-		cookie, err := r.Cookie("session")
-		if err != nil || cookie.Value == "" {
-			http.Redirect(w, r, "/login", http.StatusSeeOther)
+		userID, role, err := validateSession(r)
+		if err != nil {
+			if strings.HasPrefix(r.URL.Path, "/api/") {
+				jsonErr(w, "No autorizado", http.StatusUnauthorized)
+			} else {
+				http.Redirect(w, r, "/login", http.StatusSeeOther)
+			}
 			return
 		}
-		next.ServeHTTP(w, r)
+		ctx := context.WithValue(r.Context(), ctxUserID, userID)
+		ctx = context.WithValue(ctx, ctxRole, role)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func requireAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, role, err := validateSession(r)
+		if err != nil {
+			jsonErr(w, "No autorizado", http.StatusUnauthorized)
+			return
+		}
+		ctx := context.WithValue(r.Context(), ctxUserID, userID)
+		ctx = context.WithValue(ctx, ctxRole, role)
+		next(w, r.WithContext(ctx))
+	}
 }
 
 func withAdmin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		roleCookie, err := r.Cookie("role")
-		if err != nil || roleCookie.Value != "admin" {
+		_, role, err := validateSession(r)
+		if err != nil {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+		if role != "admin" {
 			http.Redirect(w, r, "/ventas/pos", http.StatusSeeOther)
 			return
 		}
@@ -367,29 +402,36 @@ func withAdmin(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func isAdmin(r *http.Request) bool {
-	roleCookie, err := r.Cookie("role")
-	return err == nil && roleCookie.Value == "admin"
+	_, role, err := validateSession(r)
+	return err == nil && role == "admin"
 }
 
 func isHelperOrAdmin(r *http.Request) bool {
-	roleCookie, err := r.Cookie("role")
+	_, role, err := validateSession(r)
 	if err != nil {
 		return false
 	}
-	return roleCookie.Value == "admin" || roleCookie.Value == "helper"
+	return role == "admin" || role == "helper"
 }
 
 func render(w http.ResponseWriter, r *http.Request, name string, data PageData) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if cookie, err := r.Cookie("session"); err == nil {
-		data.User = cookie.Value
+		var user string
+		db.QueryRow("SELECT u.usuario FROM sessions s JOIN USUARIOS u ON u.id=s.user_id WHERE s.id=?", cookie.Value).Scan(&user)
+		data.User = user
 	}
-	if rc, err := r.Cookie("role"); err == nil {
-		data.Role = rc.Value
+	data.Role = roleFromContext(r.Context())
+	if tokCookie, err := r.Cookie("csrf_token"); err == nil && tokCookie.Value != "" {
+		data.CSRFToken = tokCookie.Value
 	}
-	tok := csrfToken()
-	data.CSRFToken = tok
-	http.SetCookie(w, &http.Cookie{Name: "csrf_token", Value: tok, Path: "/", HttpOnly: false})
+	if data.CSRFToken == "" {
+		data.CSRFToken = csrfToken("guest")
+		http.SetCookie(w, &http.Cookie{
+			Name: "csrf_token", Value: data.CSRFToken, Path: "/",
+			HttpOnly: false, Secure: false, SameSite: http.SameSiteStrictMode,
+		})
+	}
 	var err error
 	if t, ok := pageTmpls[name]; ok {
 		err = t.Execute(w, data)
