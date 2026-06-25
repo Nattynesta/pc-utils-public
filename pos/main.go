@@ -1,6 +1,7 @@
 package main
 
 import (
+	"compress/gzip"
 	"context"
 	"database/sql"
 	"embed"
@@ -45,11 +46,17 @@ func main() {
 	os.MkdirAll(dataDir, 0755)
 	dbPath := filepath.Join(dataDir, "pdv.db")
 
-	db, err = sql.Open("sqlite", dbPath+"?_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)")
+	db, err = sql.Open("sqlite", dbPath+"?_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)&_busy_timeout=5000&cache=shared")
 	if err != nil {
 		log.Fatalf("Error opening DB: %v", err)
 	}
 	defer db.Close()
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(5 * time.Minute)
+	db.Exec("PRAGMA synchronous=NORMAL")
+	db.Exec("PRAGMA cache_size=-64000")
+	db.Exec("PRAGMA temp_store=MEMORY")
 
 	if err = migrate(db); err != nil {
 		log.Fatalf("Error migrating: %v", err)
@@ -132,6 +139,7 @@ func main() {
 	mux.HandleFunc("GET /api/proveedores/{num}/productos", handleProveedoresProductos)
 	mux.HandleFunc("POST /api/proveedores/{num}/recibir", handleProveedoresRecibir)
 
+	mux.HandleFunc("GET /api/categorias", handleCategoriasList)
 	mux.HandleFunc("GET /api/departamentos", handleDepartamentosList)
 	mux.HandleFunc("POST /api/departamentos", handleDepartamentosCreate)
 	mux.HandleFunc("PUT /api/departamentos/{id}", handleDepartamentosUpdate)
@@ -192,6 +200,10 @@ func main() {
 	mux.HandleFunc("GET /api/reportes/ventas-diarias", handleReportesVentasDiarias)
 	mux.HandleFunc("GET /api/reportes/productos-mas-vendidos", handleReportesTopProductos)
 	mux.HandleFunc("POST /api/admin/reset-ventas", withAdmin(handleAdminResetVentas))
+
+	mux.HandleFunc("POST /api/jobs", requireAuth(handleJobCreate))
+	mux.HandleFunc("GET /api/jobs/{id}", requireAuth(handleJobStatus))
+	mux.HandleFunc("GET /api/dashboard/metrics", requireAuth(handleDashboardMetrics))
 	mux.Handle("GET /audio/", http.StripPrefix("/audio/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		home, _ := os.UserHomeDir()
 		audioDir := filepath.Join(home, ".abarrotes-pdv", "audio")
@@ -232,7 +244,7 @@ func main() {
 
 	addr := fmt.Sprintf("0.0.0.0:%s", port)
 	log.Printf("Abarrotes PDV corriendo en http://localhost%s", addr)
-	log.Fatal(http.ListenAndServe(addr, withRateLimit(withCSRF(withCORS(withAuth(mux))))))
+	log.Fatal(http.ListenAndServe(addr, withRateLimit(withCSRF(withGzip(withCORS(withAuth(mux)))))))
 }
 
 func migrate(db *sql.DB) error {
@@ -319,6 +331,10 @@ func migrate(db *sql.DB) error {
 	initSessionsTable(db)
 	initAuditTable(db)
 
+	createIndexes(db)
+
+	initJobsDB(db)
+
 	// FTS5 search index
 	var hasFTS int
 	db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='productos_fts'").Scan(&hasFTS)
@@ -349,6 +365,32 @@ func withCORS(next http.Handler) http.Handler {
 			return
 		}
 		next.ServeHTTP(w, r)
+	})
+}
+
+type gzipResponseWriter struct {
+	http.ResponseWriter
+	writer *gzip.Writer
+}
+
+func (g *gzipResponseWriter) Write(b []byte) (int, error) {
+	return g.writer.Write(b)
+}
+
+func withGzip(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/static/") || strings.HasPrefix(r.URL.Path, "/audio/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("Content-Encoding", "gzip")
+		gz, _ := gzip.NewWriterLevel(w, gzip.DefaultCompression)
+		defer gz.Close()
+		next.ServeHTTP(&gzipResponseWriter{ResponseWriter: w, writer: gz}, r)
 	})
 }
 
@@ -469,4 +511,29 @@ func queryFloat(db *sql.DB, q string, args ...interface{}) float64 {
 
 func parseFormFloat(r *http.Request, key string) (float64, error) {
 	return strconv.ParseFloat(r.FormValue(key), 64)
+}
+
+func createIndexes(db *sql.DB) {
+	indexes := []string{
+		"CREATE INDEX IF NOT EXISTS idx_ventatickets_fecha ON VENTATICKETS(creado_en)",
+		"CREATE INDEX IF NOT EXISTS idx_ventatickets_cajero ON VENTATICKETS(cajero_id)",
+		"CREATE INDEX IF NOT EXISTS idx_ventatickets_cliente ON VENTATICKETS(cliente_id)",
+		"CREATE INDEX IF NOT EXISTS idx_ventatickets_estado ON VENTATICKETS(esta_abierto, esta_cancelado)",
+		"CREATE INDEX IF NOT EXISTS idx_ventas_ticket ON VENTAS(ticket_id)",
+		"CREATE INDEX IF NOT EXISTS idx_ventas_producto ON VENTAS(producto_id)",
+		"CREATE INDEX IF NOT EXISTS idx_ventas_fecha ON VENTAS(fecha)",
+		"CREATE INDEX IF NOT EXISTS idx_productos_categoria ON PRODUCTOS(categoria)",
+
+		"CREATE INDEX IF NOT EXISTS idx_clientes_telefono ON CLIENTES(telefono)",
+		"CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id)",
+		"CREATE INDEX IF NOT EXISTS idx_audit_fecha ON audit_log(created_at)",
+		"CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action)",
+		"CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)",
+		"CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)",
+	}
+	for _, idx := range indexes {
+		if _, err := db.Exec(idx); err != nil {
+			log.Printf("Error creating index: %v", err)
+		}
+	}
 }

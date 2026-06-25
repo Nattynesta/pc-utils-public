@@ -55,8 +55,8 @@ func (rl *IPRateLimiter) cleanup(interval time.Duration) {
 }
 
 var (
-	globalLimiter = NewIPRateLimiter(100.0/60.0, 20)
-	authLimiter   = NewIPRateLimiter(5.0/60.0, 5)
+	globalLimiter = NewIPRateLimiter(200.0/60.0, 40)
+	authLimiter   = NewIPRateLimiter(30.0/60.0, 10)
 )
 
 func clientIP(r *http.Request) string {

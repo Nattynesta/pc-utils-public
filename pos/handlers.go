@@ -21,24 +21,103 @@ var offSync sync.Mutex
 
 // --- Productos ---
 
+type PaginationParams struct {
+	Page   int
+	Limit  int
+	Offset int
+}
+
+func parsePagination(r *http.Request) PaginationParams {
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	if page < 1 {
+		page = 1
+	}
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	if limit < 1 || limit > 100 {
+		limit = 50
+	}
+	return PaginationParams{
+		Page:   page,
+		Limit:  limit,
+		Offset: (page - 1) * limit,
+	}
+}
+
 func handleProductosList(w http.ResponseWriter, r *http.Request) {
-	ps, err := listProductos()
+	hasPage := r.URL.Query().Has("page") || r.URL.Query().Has("limit")
+	p := parsePagination(r)
+	search := r.URL.Query().Get("q")
+
+	var total int
+	var rows *sql.Rows
+	var err error
+
+	if search != "" {
+		searchArg := strings.ReplaceAll(search, " ", "* ") + "*"
+		if hasPage {
+			db.QueryRow(`SELECT COUNT(*) FROM PRODUCTOS p JOIN productos_fts fts ON p.codigo = fts.codigo WHERE productos_fts MATCH ?`, searchArg).Scan(&total)
+		}
+
+		rows, err = db.Query(`
+			SELECT p.codigo, p.descripcion, p.tventa, COALESCE(p.pcosto,0), COALESCE(p.pventa,0),
+			p.dept, p.provid, p.umedida, COALESCE(p.mayoreo,0), p.iprioridad,
+			COALESCE(p.dinventario,0), COALESCE(p.dinvminimo,0), COALESCE(p.dinvmaximo,0),
+			COALESCE(p.checado_en,''), COALESCE(p.porcentaje_ganancia,0), COALESCE(p.componentes,''), COALESCE(p.impuestos,''),
+			COALESCE(p.imagen_local,''),
+			COALESCE(p.marca, o.marca), COALESCE(p.categorias, o.categorias),
+			COALESCE(p.ingredientes, o.ingredientes), COALESCE(p.nutriscore, o.nutriscore),
+			COALESCE(p.cantidad_presentacion, o.cantidad_presentacion), COALESCE(p.nutricion, o.nutricion),
+			COALESCE(p.off_image_url, o.imagen_url), COALESCE(p.off_image_small, o.imagen_small),
+			COALESCE(o.imagen_grande, ''), COALESCE(o.nombre, '')
+			FROM PRODUCTOS p
+			LEFT JOIN productos_openfoods o ON p.codigo = o.codigo
+			JOIN productos_fts fts ON p.codigo = fts.codigo
+			WHERE productos_fts MATCH ?
+			ORDER BY rank`, searchArg)
+	} else {
+		if hasPage {
+			db.QueryRow(`SELECT COUNT(*) FROM PRODUCTOS`).Scan(&total)
+		}
+
+		rows, err = db.Query(`
+			SELECT p.codigo, p.descripcion, p.tventa, COALESCE(p.pcosto,0), COALESCE(p.pventa,0),
+			p.dept, p.provid, p.umedida, COALESCE(p.mayoreo,0), p.iprioridad,
+			COALESCE(p.dinventario,0), COALESCE(p.dinvminimo,0), COALESCE(p.dinvmaximo,0),
+			COALESCE(p.checado_en,''), COALESCE(p.porcentaje_ganancia,0), COALESCE(p.componentes,''), COALESCE(p.impuestos,''),
+			COALESCE(p.imagen_local,''),
+			COALESCE(p.marca, o.marca), COALESCE(p.categorias, o.categorias),
+			COALESCE(p.ingredientes, o.ingredientes), COALESCE(p.nutriscore, o.nutriscore),
+			COALESCE(p.cantidad_presentacion, o.cantidad_presentacion), COALESCE(p.nutricion, o.nutricion),
+			COALESCE(p.off_image_url, o.imagen_url), COALESCE(p.off_image_small, o.imagen_small),
+			COALESCE(o.imagen_grande, ''), COALESCE(o.nombre, '')
+			FROM PRODUCTOS p
+			LEFT JOIN productos_openfoods o ON p.codigo = o.codigo
+			ORDER BY p.descripcion`)
+	}
+
 	if err != nil {
 		jsonErr(w, err.Error(), 500)
 		return
 	}
-	q := r.URL.Query().Get("q")
-	if q != "" {
-		filtered := make([]Producto, 0)
-		q = strings.ToLower(q)
-		for _, p := range ps {
-			if strings.Contains(strings.ToLower(p.Codigo), q) || strings.Contains(strings.ToLower(p.Descripcion), q) {
-				filtered = append(filtered, p)
-			}
-		}
-		ps = filtered
+	defer rows.Close()
+
+	ps := make([]Producto, 0)
+	for rows.Next() {
+		var pr Producto
+		rows.Scan(&pr.Codigo, &pr.Descripcion, &pr.Tventa, &pr.Pcosto, &pr.Pventa, &pr.Dept, &pr.Provid, &pr.Umedida, &pr.Mayoreo, &pr.Iprioridad, &pr.Dinventario, &pr.Dinvminimo, &pr.Dinvmaximo, &pr.ChecadoEn, &pr.PorcentajeGanancia, &pr.Componentes, &pr.Impuestos, &pr.ImagenLocal, &pr.Marca, &pr.Categorias, &pr.Ingredientes, &pr.Nutriscore, &pr.CantidadPresentacion, &pr.Nutricion, &pr.OffImageUrl, &pr.OffImageSmall, &pr.OffImageGrande, &pr.OffName)
+		ps = append(ps, pr)
 	}
-	jsonResp(w, ps)
+	if hasPage {
+		pages := (total + p.Limit - 1) / p.Limit
+		jsonResp(w, map[string]interface{}{
+			"data":  ps,
+			"total": total,
+			"page":  p.Page,
+			"pages": pages,
+		})
+	} else {
+		jsonResp(w, ps)
+	}
 }
 
 func handleProductosSearch(w http.ResponseWriter, r *http.Request) {
@@ -277,7 +356,25 @@ func handleProductoUploadImagen(w http.ResponseWriter, r *http.Request) {
 // --- Clientes ---
 
 func handleClientesList(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Query(`SELECT numero, COALESCE(nombre,''), COALESCE(direccion,''), COALESCE(telefono,''), COALESCE(dsaldoactual,0), COALESCE(dtactualizasaldo,''), COALESCE(limite_credito,0), COALESCE(ultimo_pago_en,''), COALESCE(folio,0) FROM CLIENTES ORDER BY nombre`)
+	hasPage := r.URL.Query().Has("page") || r.URL.Query().Has("limit")
+	p := parsePagination(r)
+	search := r.URL.Query().Get("q")
+
+	var total int
+	var rows *sql.Rows
+	var err error
+
+	if search != "" {
+		if hasPage {
+			db.QueryRow(`SELECT COUNT(*) FROM CLIENTES WHERE nombre LIKE ? OR telefono LIKE ?`, "%"+search+"%", "%"+search+"%").Scan(&total)
+		}
+		rows, err = db.Query(`SELECT numero, COALESCE(nombre,''), COALESCE(direccion,''), COALESCE(telefono,''), COALESCE(dsaldoactual,0), COALESCE(dtactualizasaldo,''), COALESCE(limite_credito,0), COALESCE(ultimo_pago_en,''), COALESCE(folio,0) FROM CLIENTES WHERE nombre LIKE ? OR telefono LIKE ? ORDER BY nombre`, "%"+search+"%", "%"+search+"%")
+	} else {
+		if hasPage {
+			db.QueryRow(`SELECT COUNT(*) FROM CLIENTES`).Scan(&total)
+		}
+		rows, err = db.Query(`SELECT numero, COALESCE(nombre,''), COALESCE(direccion,''), COALESCE(telefono,''), COALESCE(dsaldoactual,0), COALESCE(dtactualizasaldo,''), COALESCE(limite_credito,0), COALESCE(ultimo_pago_en,''), COALESCE(folio,0) FROM CLIENTES ORDER BY nombre`)
+	}
 	if err != nil {
 		jsonErr(w, err.Error(), 500)
 		return
@@ -289,7 +386,17 @@ func handleClientesList(w http.ResponseWriter, r *http.Request) {
 		rows.Scan(&c.Numero, &c.Nombre, &c.Direccion, &c.Telefono, &c.Dsaldoactual, &c.Dtactualizasaldo, &c.LimiteCredito, &c.UltimoPagoEn, &c.Folio)
 		cs = append(cs, c)
 	}
-	jsonResp(w, cs)
+	if hasPage {
+		pages := (total + p.Limit - 1) / p.Limit
+		jsonResp(w, map[string]interface{}{
+			"data":  cs,
+			"total": total,
+			"page":  p.Page,
+			"pages": pages,
+		})
+	} else {
+		jsonResp(w, cs)
+	}
 }
 
 func handleClientesSearch(w http.ResponseWriter, r *http.Request) {
@@ -1060,7 +1167,40 @@ func handleTicketsList(w http.ResponseWriter, r *http.Request) {
 
 	whereClause := strings.Join(where, " AND ")
 
-	rows, err := db.Query(`SELECT t.id, t.folio, t.caja_id, t.cajero_id, COALESCE(t.nombre,''), t.prioridad, t.creado_en, COALESCE(t.subtotal,0), COALESCE(t.impuestos,0), COALESCE(t.total,0), COALESCE(t.ganancia,0), t.esta_abierto, t.cliente_id, COALESCE(t.vendido_en,''), t.es_modificable, COALESCE(t.pago_con,0), COALESCE(t.moneda,''), COALESCE(t.numero_articulos,0), COALESCE(t.pagado_en,''), t.esta_cancelado, t.operacion_id, COALESCE(t.forma_pago,''), COALESCE(t.referencia,''), COALESCE(t.total_devuelto,0), COALESCE(c.nombre,''), COALESCE(c.direccion,'') FROM VENTATICKETS t LEFT JOIN CLIENTES c ON t.cliente_id=c.numero WHERE `+whereClause+` ORDER BY t.creado_en DESC LIMIT ? OFFSET ?`, append(args, limit, offset)...)
+	var total int
+	if r.URL.Query().Has("page") || r.URL.Query().Has("limit") {
+		countQuery := `SELECT COUNT(*) FROM VENTATICKETS t LEFT JOIN CLIENTES c ON t.cliente_id=c.numero WHERE ` + whereClause
+		db.QueryRow(countQuery, args...).Scan(&total)
+
+		rows, err := db.Query(`SELECT t.id, t.folio, t.caja_id, t.cajero_id, COALESCE(t.nombre,''), t.prioridad, t.creado_en, COALESCE(t.subtotal,0), COALESCE(t.impuestos,0), COALESCE(t.total,0), COALESCE(t.ganancia,0), t.esta_abierto, t.cliente_id, COALESCE(t.vendido_en,''), t.es_modificable, COALESCE(t.pago_con,0), COALESCE(t.moneda,''), COALESCE(t.numero_articulos,0), COALESCE(t.pagado_en,''), t.esta_cancelado, t.operacion_id, COALESCE(t.forma_pago,''), COALESCE(t.referencia,''), COALESCE(t.total_devuelto,0), COALESCE(c.nombre,''), COALESCE(c.direccion,'') FROM VENTATICKETS t LEFT JOIN CLIENTES c ON t.cliente_id=c.numero WHERE `+whereClause+` ORDER BY t.creado_en DESC LIMIT ? OFFSET ?`, append(args, limit, offset)...)
+		if err != nil {
+			jsonErr(w, err.Error(), 500)
+			return
+		}
+		defer rows.Close()
+		ts := make([]VentaTicket, 0)
+		for rows.Next() {
+			var t VentaTicket
+			if err := rows.Scan(&t.ID, &t.Folio, &t.CajaID, &t.CajeroID, &t.Nombre, &t.Prioridad, &t.CreadoEn, &t.Subtotal, &t.Impuestos, &t.Total, &t.Ganancia, &t.EstaAbierto, &t.ClienteID, &t.VendidoEn, &t.EsModificable, &t.PagoCon, &t.Moneda, &t.NumeroArticulos, &t.PagadoEn, &t.EstaCancelado, &t.OperacionID, &t.FormaPago, &t.Referencia, &t.TotalDevuelto, &t.ClienteNombre, &t.ClienteDireccion); err != nil {
+				fmt.Printf("Error scanning ticket row: %v\n", err)
+				continue
+			}
+			ts = append(ts, t)
+		}
+		if ts == nil {
+			ts = []VentaTicket{}
+		}
+		pages := (total + limit - 1) / limit
+		jsonResp(w, map[string]interface{}{
+			"data":  ts,
+			"total": total,
+			"page":  page,
+			"pages": pages,
+		})
+		return
+	}
+
+	rows, err := db.Query(`SELECT t.id, t.folio, t.caja_id, t.cajero_id, COALESCE(t.nombre,''), t.prioridad, t.creado_en, COALESCE(t.subtotal,0), COALESCE(t.impuestos,0), COALESCE(t.total,0), COALESCE(t.ganancia,0), t.esta_abierto, t.cliente_id, COALESCE(t.vendido_en,''), t.es_modificable, COALESCE(t.pago_con,0), COALESCE(t.moneda,''), COALESCE(t.numero_articulos,0), COALESCE(t.pagado_en,''), t.esta_cancelado, t.operacion_id, COALESCE(t.forma_pago,''), COALESCE(t.referencia,''), COALESCE(t.total_devuelto,0), COALESCE(c.nombre,''), COALESCE(c.direccion,'') FROM VENTATICKETS t LEFT JOIN CLIENTES c ON t.cliente_id=c.numero WHERE `+whereClause+` ORDER BY t.creado_en DESC`)
 	if err != nil {
 		jsonErr(w, err.Error(), 500)
 		return
@@ -1887,6 +2027,139 @@ func handleAdminResetVentas(w http.ResponseWriter, r *http.Request) {
 
 	logAudit(db, userID, "admin_reset_ventas", "system", 0, fmt.Sprintf("Backup en: %s", backupDir), r.RemoteAddr)
 	jsonResp(w, map[string]string{"ok": "Datos reiniciados", "backup": backupDir})
+}
+
+// --- Dashboard Metrics ---
+
+func handleDashboardMetrics(w http.ResponseWriter, r *http.Request) {
+	cacheKey := "dashboard_metrics"
+	if cached, ok := appCache.Get(cacheKey); ok {
+		jsonResp(w, cached)
+		return
+	}
+
+	var ventasHoy, ticketsHoy, gananciaHoy float64
+	var topProductos []map[string]interface{}
+
+	db.QueryRow(`SELECT COALESCE(SUM(total),0), COUNT(*), COALESCE(SUM(ganancia),0) FROM VENTATICKETS WHERE date(creado_en) = date('now') AND esta_cancelado='f'`).Scan(&ventasHoy, &ticketsHoy, &gananciaHoy)
+
+	rows, err := db.Query(`
+		SELECT p.descripcion, SUM(va.cantidad) as total_vendido
+		FROM VENTATICKETS_ARTICULOS va
+		JOIN PRODUCTOS p ON va.producto_codigo = p.codigo
+		JOIN VENTATICKETS vt ON va.ticket_id = vt.id
+		WHERE date(vt.creado_en) = date('now') AND vt.esta_cancelado='f'
+		GROUP BY p.codigo
+		ORDER BY total_vendido DESC
+		LIMIT 5
+	`)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var desc string
+			var total float64
+			rows.Scan(&desc, &total)
+			topProductos = append(topProductos, map[string]interface{}{
+				"producto": desc,
+				"cantidad": total,
+			})
+		}
+	}
+	if topProductos == nil {
+		topProductos = []map[string]interface{}{}
+	}
+
+	result := map[string]interface{}{
+		"ventas_hoy":    ventasHoy,
+		"tickets_hoy":   ticketsHoy,
+		"ganancia_hoy":  gananciaHoy,
+		"top_productos": topProductos,
+	}
+	appCache.Set(cacheKey, result, 30*time.Second)
+	jsonResp(w, result)
+}
+
+// --- Categorias ---
+
+func handleCategoriasList(w http.ResponseWriter, r *http.Request) {
+	cacheKey := "categorias_list"
+	if cached, ok := appCache.Get(cacheKey); ok {
+		jsonResp(w, cached)
+		return
+	}
+
+	rows, err := db.Query(`SELECT DISTINCT categoria FROM PRODUCTOS WHERE categoria != '' AND categoria IS NOT NULL AND activo=1 ORDER BY categoria`)
+	if err != nil {
+		jsonErr(w, err.Error(), 500)
+		return
+	}
+	defer rows.Close()
+
+	var categorias []string
+	for rows.Next() {
+		var cat string
+		rows.Scan(&cat)
+		categorias = append(categorias, cat)
+	}
+	if categorias == nil {
+		categorias = []string{}
+	}
+	appCache.Set(cacheKey, categorias, 1*time.Hour)
+	jsonResp(w, categorias)
+}
+
+// --- Jobs ---
+
+func handleJobCreate(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Type   JobType                `json:"type"`
+		Params map[string]interface{} `json:"params"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonErr(w, "JSON invalido", 400)
+		return
+	}
+	if req.Type == "" {
+		jsonErr(w, "Tipo de job requerido", 400)
+		return
+	}
+
+	jobID := generateJobID()
+	userID := userIDFromContext(r.Context())
+
+	paramsJSON, _ := json.Marshal(req.Params)
+	db.Exec(
+		"INSERT INTO jobs (id, type, params, user_id) VALUES (?, ?, ?, ?)",
+		jobID, req.Type, string(paramsJSON), userID,
+	)
+
+	jobQueue <- Job{
+		ID:     jobID,
+		Type:   req.Type,
+		Params: req.Params,
+		UserID: userID,
+	}
+
+	jsonResp(w, map[string]interface{}{
+		"job_id": jobID,
+		"status": "queued",
+	})
+}
+
+func handleJobStatus(w http.ResponseWriter, r *http.Request) {
+	jobID := r.PathValue("id")
+
+	var status, result string
+	err := db.QueryRow("SELECT status, COALESCE(result,'') FROM jobs WHERE id = ?", jobID).Scan(&status, &result)
+	if err != nil {
+		jsonErr(w, "Job no encontrado", 404)
+		return
+	}
+
+	jsonResp(w, map[string]string{
+		"status": status,
+		"result": result,
+	})
 }
 
 
