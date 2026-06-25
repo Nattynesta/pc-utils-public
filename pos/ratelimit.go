@@ -83,6 +83,10 @@ func withRateLimit(next http.Handler) http.Handler {
 		ip := clientIP(r)
 
 		path := r.URL.Path
+		if strings.HasPrefix(path, "/static/") || strings.HasPrefix(path, "/audio/") {
+			next.ServeHTTP(w, r)
+			return
+		}
 		isAuth := path == "/login" || strings.HasPrefix(path, "/api/usuarios") || strings.HasPrefix(path, "/api/register") || strings.HasPrefix(path, "/register")
 
 		if isAuth {
