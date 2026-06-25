@@ -528,40 +528,6 @@ func parseFormFloat(r *http.Request, key string) (float64, error) {
 	return strconv.ParseFloat(r.FormValue(key), 64)
 }
 
-func createPerformanceIndexes(db *sql.DB) {
-	indexes := []string{
-		"CREATE INDEX IF NOT EXISTS idx_ventatickets_creado ON VENTATICKETS(creado_en)",
-		"CREATE INDEX IF NOT EXISTS idx_ventatickets_cajero ON VENTATICKETS(cajero_id)",
-		"CREATE INDEX IF NOT EXISTS idx_ventatickets_cliente ON VENTATICKETS(cliente_id)",
-		"CREATE INDEX IF NOT EXISTS idx_ventatickets_estado ON VENTATICKETS(esta_abierto, esta_cancelado)",
-
-		"CREATE INDEX IF NOT EXISTS idx_ventas_ticket ON VENTAS(ticket_id)",
-		"CREATE INDEX IF NOT EXISTS idx_ventas_producto ON VENTAS(producto_codigo)",
-		"CREATE INDEX IF NOT EXISTS idx_ventas_fecha ON VENTAS(fecha)",
-
-		"CREATE INDEX IF NOT EXISTS idx_productos_categoria ON PRODUCTOS(categorias)",
-		"CREATE INDEX IF NOT EXISTS idx_productos_codigo ON PRODUCTOS(codigo)",
-
-		"CREATE INDEX IF NOT EXISTS idx_clientes_telefono ON CLIENTES(telefono)",
-		"CREATE INDEX IF NOT EXISTS idx_clientes_nombre ON CLIENTES(nombre)",
-
-		"CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id)",
-		"CREATE INDEX IF NOT EXISTS idx_audit_fecha ON audit_log(created_at)",
-		"CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action)",
-
-		"CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)",
-		"CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)",
-
-		"CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)",
-		"CREATE INDEX IF NOT EXISTS idx_jobs_user ON jobs(user_id)",
-	}
-	for _, idx := range indexes {
-		if _, err := db.Exec(idx); err != nil {
-			log.Printf("Error creando indice: %v", err)
-		}
-	}
-	log.Println("Indices de rendimiento creados correctamente")
-}
 
 func migrateThumbnails(db *sql.DB) {
 	rows, err := db.Query("SELECT codigo, imagen_local FROM PRODUCTOS WHERE imagen_local != '' AND (imagen_thumb IS NULL OR imagen_thumb = '')")

@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"log"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -320,4 +321,28 @@ func listProductos() ([]Producto, error) {
 		ps = append(ps, p)
 	}
 	return ps, nil
+}
+
+func createPerformanceIndexes(db *sql.DB) {
+	indexes := []string{
+		"CREATE INDEX IF NOT EXISTS idx_ventatickets_creado ON VENTATICKETS(creado_en)",
+		"CREATE INDEX IF NOT EXISTS idx_ventatickets_cajero ON VENTATICKETS(cajero_id)",
+		"CREATE INDEX IF NOT EXISTS idx_ventatickets_cliente ON VENTATICKETS(cliente_id)",
+		"CREATE INDEX IF NOT EXISTS idx_ventatickets_estado ON VENTATICKETS(esta_abierto, esta_cancelado)",
+		"CREATE INDEX IF NOT EXISTS idx_ventas_ticket ON VENTAS(ticket_id)",
+		"CREATE INDEX IF NOT EXISTS idx_ventas_producto ON VENTAS(producto_codigo)",
+		"CREATE INDEX IF NOT EXISTS idx_productos_categoria ON PRODUCTOS(categorias)",
+		"CREATE INDEX IF NOT EXISTS idx_productos_activo ON PRODUCTOS(activo)",
+		"CREATE INDEX IF NOT EXISTS idx_clientes_telefono ON CLIENTES(telefono)",
+		"CREATE INDEX IF NOT EXISTS idx_audit_fecha ON audit_log(created_at)",
+		"CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id)",
+		"CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)",
+		"CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)",
+	}
+	for _, idx := range indexes {
+		if _, err := db.Exec(idx); err != nil {
+			log.Printf("Error creando indice %s: %v", idx, err)
+		}
+	}
+	log.Println("Indices de rendimiento creados")
 }
