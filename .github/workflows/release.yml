@@ -1,0 +1,71 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build for ${{ matrix.target.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - name: windows-amd64
+            goos: windows
+            goarch: amd64
+            ext: .exe
+          - name: windows-arm64
+            goos: windows
+            goarch: arm64
+            ext: .exe
+          - name: linux-amd64
+            goos: linux
+            goarch: amd64
+            ext: ""
+          - name: linux-arm64
+            goos: linux
+            goarch: arm64
+            ext: ""
+          - name: linux-arm
+            goos: linux
+            goarch: arm
+            ext: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: Build
+        run: |
+          cd pos
+          CGO_ENABLED=0 GOOS=${{ matrix.target.goos }} GOARCH=${{ matrix.target.goarch }} go build -o pdv-${{ matrix.target.name }}${{ matrix.target.ext }} .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdv-${{ matrix.target.name }}
+          path: pos/pdv-${{ matrix.target.name }}${{ matrix.target.ext }}
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/pdv-*
+          draft: false
+          prerelease: true
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
